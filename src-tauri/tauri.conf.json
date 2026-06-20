@@ -1,0 +1,34 @@
+{
+  "productName": "LLaMA 启动器 Pro",
+  "version": "0.2.0",
+  "identifier": "com.getai.llama-launcher",
+  "build": {
+    "frontendDist": "../dist",
+    "beforeDevCommand": "",
+    "beforeBuildCommand": ""
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "LLaMA 启动器 Pro",
+        "width": 1100,
+        "height": 960,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": [
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
+    "resources": ["resources/config.json"]
+  }
+}

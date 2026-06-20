@@ -1,5 +1,6 @@
 # llama-launcher
 Windows 本地 `llama-server` 图形化启动器,内置 Anthropic Messages API 兼容代理,可让只支持 Anthropic API 的客户端（如 Claude Code）直接接入本地 llama-server。
+
 # LLaMA Launcher Pro
 
 **下载地址**
@@ -242,4 +243,7 @@ cargo tauri build
 ### 分发
 
 NSIS 安装包支持用户自选安装目录。安装后将 `config.json` 放在与 exe 相同目录下即可使用内置预设；`profiles.json` 由应用在首次保存配置时自动创建。
+<<<<<<< HEAD
 
+=======
+>>>>>>> 2f05d32 (first commit)

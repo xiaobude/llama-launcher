@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLaMA 启动器 Pro - Tauri 版</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="W">
+
+<div class="hdr">
+  <h1>🚀 LLaMA Server <span class="badge">Tauri · Pro</span></h1>
+  <div class="prow">
+    <select id="profileSelect" onchange="loadProfile()"></select>
+    <button class="bs" onclick="saveProfile()">💾 保存</button>
+    <button class="bd" onclick="deleteProfile()">🗑 删除</button>
+  </div>
+</div>
+
+<div class="ctrl">
+  <button class="b1" id="btnStart" onclick="startServer()">▶ 启动服务</button>
+  <button class="b2" id="btnStop" onclick="stopServer()" disabled>■ 停止</button>
+  <button class="b3" onclick="resetDefaults()">↺</button>
+  <div class="st" id="status" onclick="openLog()" title="点击查看实时日志"><span class="dot"></span><span id="stText">就绪</span></div>
+</div>
+
+<div class="card">
+  <div class="fr" style="align-items:center">
+    <label style="white-space:nowrap;color:#64748b;font-size:16px">服务器路径</label>
+    <div class="row-f g">
+      <input type="text" id="serverPath">
+      <button class="btn-file" onclick="browseFile('serverPath','exe')">📁</button>
+    </div>
+    <label class="tgl" style="flex-shrink:0" title="启用后将转译为 OpenAI 格式转发到 llama-server，并在指定端口暴露 /v1/messages">
+      <input type="checkbox" id="enableAnthropicProxy" onchange="updatePreview()">
+      <div class="tgl-track"><div class="tgl-thumb"></div></div>
+      <span class="tgl-lbl">启用 Anthropic API 兼容</span>
+    </label>
+    <input type="number" id="anthropicProxyPort" value="8081" style="width:80px;flex-shrink:0">
+    <input type="text" id="anthropicApiKey" placeholder="API Key（留空则不校验，局域网访问建议填写）" style="width:240px;flex-shrink:0">
+  </div>
+  <div class="fr">
+    <div class="col g"><label>主模型路径 (Main Model)</label>
+      <div class="row-f">
+        <input type="text" id="modelPath" oninput="onModelPathChange()">
+        <button class="btn-file" onclick="browseFile('modelPath','gguf')">📁</button>
+      </div>
+    </div>
+    <div class="col g"><label>外部草稿模型 (Draft Model)</label>
+      <div class="row-f">
+        <input type="text" id="draftModelPath">
+        <button class="btn-file" onclick="browseFile('draftModelPath','gguf')">📁</button>
+      </div>
+    </div>
+  </div>
+  <div class="fr" style="align-items:center">
+    <label style="white-space:nowrap;color:#64748b;font-size:16px;flex-shrink:0">mmproj (Vision)</label>
+    <label class="tgl" style="flex-shrink:0">
+      <input type="checkbox" id="mmprojToggle" onchange="updateMmprojDim();updatePreview()">
+      <div class="tgl-track"><div class="tgl-thumb"></div></div>
+    </label>
+    <label style="white-space:nowrap;color:#64748b;font-size:16px;flex-shrink:0">视觉模型路径</label>
+    <div class="row-f" style="flex:1;min-width:0">
+      <input type="text" id="mmprojPath" style="min-width:0">
+      <button class="btn-file" id="mmprojBrowse" onclick="browseFile('mmprojPath','gguf')">📁</button>
+    </div>
+  </div>
+  <div class="fr">
+    <div class="col g"><label>别名</label><input type="text" id="alias"></div>
+    <div class="col" style="width:108px"><label>端口</label><input type="number" id="port" value="8080"></div>
+    <div class="col" style="flex-shrink:0"><label>Host</label>
+      <label class="tgl">
+        <input type="checkbox" id="hostToggle">
+        <div class="tgl-track"><div class="tgl-thumb"></div></div>
+        <span class="tgl-lbl">允许局域网访问</span>
+      </label>
+    </div>
+    <div class="col" style="width:82px"><label>CUDA</label><input type="text" id="cudaDevice"></div>
+  </div>
+  <div class="fr">
+    <div class="col" style="width:78px"><label>GPU层</label><input type="number" id="gpuLayers" value="32"></div>
+    <div class="col" style="width:102px"><label>上下文</label><input type="number" id="ctxSize" value="4096"></div>
+    <div class="col" style="width:78px"><label>Batch</label><input type="number" id="batchSize"></div>
+    <div class="col" style="width:78px"><label>uBatch</label><input type="number" id="ubatchSize"></div>
+    <div class="col" style="width:90px"><label>-np</label><input type="number" id="numPhysGpu"></div>
+    <div class="col" style="width:102px"><label>cacheK</label>
+      <select id="cacheK"><option value="f16">f16</option><option value="q8_0">q8_0</option><option value="q4_0">q4_0</option></select>
+    </div>
+    <div class="col" style="width:102px"><label>cacheV</label>
+      <select id="cacheV"><option value="f16">f16</option><option value="q8_0">q8_0</option><option value="q4_0">q4_0</option></select>
+    </div>
+    <div class="col" style="width:102px"><label>cacheRAM</label><input type="number" id="cacheRam"></div>
+    <div class="col" style="width:108px"><label>线程</label><input type="number" id="threads"></div>
+    <div class="col" style="width:108px"><label>批线程</label><input type="number" id="threadsBatch"></div>
+  </div>
+  <div class="checks">
+    <label class="ck"><input type="checkbox" id="jinja"> jinja</label>
+    <label class="ck"><input type="checkbox" id="flashAttn"> flash-attn</label>
+    <label class="ck"><input type="checkbox" id="noMmap"> no-mmap</label>
+    <label class="ck"><input type="checkbox" id="kvUnified"> kv-unified</label>
+    <label class="ck"><input type="checkbox" id="contBatching"> cont-batch</label>
+    <label class="ck"><input type="checkbox" id="metrics"> metrics</label>
+    <label class="ck"><input type="checkbox" id="reasoning"> reasoning</label>
+  </div>
+  <div class="fr" style="margin-top:9px">
+    <div class="col" style="width:200px"><label>投机解码 (内置MTP专用)</label>
+      <select id="specType" onchange="updateSpecVis();updatePreview()">
+        <option value="none">关闭 (或使用外部小模型)</option>
+        <option value="draft-mtp">draft-mtp (仅限MTP模型)</option>
+        <option value="nfnet">nfnet</option>
+        <option value="ptn">ptn</option>
+      </select>
+    </div>
+    <div class="col" id="cDN" style="width:75px"><label>草稿N</label><input type="number" id="draftN"></div>
+    <div class="col" id="cDNgl" style="width:75px"><label>NGL</label><input type="number" id="draftNgl"></div>
+    <div class="col" id="cDK" style="width:102px"><label>草稿cacheK</label>
+      <select id="draftTypeK"><option value="f16">f16</option><option value="q8_0">q8_0</option><option value="q4_0">q4_0</option></select>
+    </div>
+    <div class="col" id="cDV" style="width:102px"><label>草稿cacheV</label>
+      <select id="draftTypeV"><option value="f16">f16</option><option value="q8_0">q8_0</option><option value="q4_0">q4_0</option></select>
+    </div>
+    <div class="col" style="width:108px"><label>推理预算</label><input type="number" id="reasoningBudget"></div>
+    <div class="col" style="width:90px"><label>日志级别</label>
+      <select id="logVerbosity"><option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option></select>
+    </div>
+    <div class="col" style="width:100px"><label>日志格式</label>
+      <select id="logFormat"><option value="text">text</option><option value="json">json</option></select>
+    </div>
+    <div class="col" style="width:114px"><label>图片minTok</label><input type="number" id="imageMinTokens"></div>
+  </div>
+  <div class="fr" style="margin-top:9px">
+    <div class="col g"><label>额外参数（每行一个）</label>
+      <textarea id="extraParams" rows="2" style="resize:vertical;font-family:Consolas,monospace;font-size:11px;line-height:1.5"></textarea>
+    </div>
+  </div>
+</div>
+
+<div class="cmd" id="cmdPreview"></div>
+
+<div class="card" id="chatPanel" style="margin-top:14px">
+  <div class="chat-hdr">
+    <span class="chat-title" onclick="toggleChat()">💬 聊天 <span id="chatToggleIcon">▲</span></span>
+    <div class="chat-opts">
+      <span id="chatSpeed" style="font-size:15px;font-weight:700;color:#64748b;white-space:nowrap;min-width:72px;text-align:right">— t/s</span>
+      <label>系统提示</label><input type="text" id="chatSys" style="width:240px" placeholder="（可选）">
+      <label>温度</label><input type="number" id="chatTemp" style="width:60px" value="0.7" step="0.1" min="0" max="2">
+      <label>MaxTok</label><input type="number" id="chatMaxTok" style="width:75px" value="4096">
+      <button class="b3" style="font-size:14px;padding:7px 12px" onclick="clearChat()">清空</button>
+    </div>
+  </div>
+  <div id="chatBody">
+    <div id="chatMsgs"></div>
+    <div class="chat-foot">
+      <textarea id="chatInput" rows="3" placeholder="输入消息… Enter 发送，Shift+Enter 换行"></textarea>
+      <button id="btnSend" onclick="sendChat()">发送</button>
+    </div>
+  </div>
+</div>
+
+</div>
+
+
+<script src="main.js"></script>
+</body>
+</html>
