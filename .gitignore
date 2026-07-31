@@ -1,1 +1,22 @@
+# Rust / Tauri build artifacts
 /target
+/src-tauri/target
+**/*.rs.bk
+
+# Local compiled binaries & DLLs
+llama-server.exe
+*.dll
+*.lib
+*.exp
+*.pdb
+logs/
+
+# Third-party source clones
+/llama-source
+/llama.cpp-*
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

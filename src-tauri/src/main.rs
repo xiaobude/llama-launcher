@@ -1,6 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod anthropic_proxy;
+mod gguf;
+
+use gguf::{estimate_vram, inspect_gguf_file, GgufInfo, VramEstimate};
 
 use std::fs;
 use std::net::TcpListener;
@@ -18,6 +21,7 @@ const CREATE_NEW_CONSOLE: u32 = 0x00000010;
 
 struct ServerPid(Mutex<Option<u32>>);
 struct ProxyHandle(Mutex<Option<tokio::task::JoinHandle<()>>>);
+struct ServerPort(Mutex<Option<u16>>);
 
 fn get_log_dir(_app: &tauri::AppHandle) -> PathBuf {
     let path = std::env::current_exe()
@@ -73,18 +77,27 @@ fn rotate_log(path: &PathBuf, max_size: u64) {
 async fn start_server(
     state: State<'_, ServerPid>,
     proxy_state: State<'_, ProxyHandle>,
+    port_state: State<'_, ServerPort>,
     app: tauri::AppHandle,
-    args: Vec<String>,
+    mut args: Vec<String>,
     cuda_device: String,
     enable_anthropic_proxy: bool,
     anthropic_proxy_port: u16,
     anthropic_api_key: String,
 ) -> Result<u32, String> {
-    if args.is_empty() || args[0].is_empty() {
-        return Err("服务器路径不能为空".to_string());
-    }
-    if !std::path::Path::new(&args[0]).exists() {
-        return Err(format!("服务器程序不存在: {}", args[0]));
+    if args.is_empty() || args[0].is_empty() || !std::path::Path::new(&args[0]).exists() {
+        let bundled = find_file_path(&app, "llama-server.exe");
+        if bundled.exists() {
+            if args.is_empty() {
+                args.push(bundled.to_string_lossy().to_string());
+            } else {
+                args[0] = bundled.to_string_lossy().to_string();
+            }
+        } else if args.is_empty() || args[0].is_empty() {
+            return Err("服务器路径不能为空，且未找到内置引擎 (llama-server.exe)".to_string());
+        } else {
+            return Err(format!("服务器程序不存在: {}", args[0]));
+        }
     }
 
     let port = args
@@ -115,14 +128,16 @@ async fn start_server(
 
     let log_dir = get_log_dir(&app);
     let log_file = log_dir.join("llama-server.log");
-    rotate_log(&log_file, 10 * 1024 * 1024);
 
+    // Open the log file first, then rotate — avoids losing output between
+    // rename and re-open if the file just crossed the size threshold.
     let log_out = fs::OpenOptions::new()
         .create(true)
         .write(true)
         .truncate(true)
         .open(&log_file)
         .map_err(|e| format!("无法创建日志文件: {}", e))?;
+    rotate_log(&log_file, 10 * 1024 * 1024);
     let log_err = log_out.try_clone().map_err(|e| e.to_string())?;
 
     let filtered_args: Vec<&str> = args[1..]
@@ -133,20 +148,74 @@ async fn start_server(
 
     let mut cmd = Command::new(&args[0]);
     cmd.args(&filtered_args)
-        .stdout(Stdio::from(log_out))
-        .stderr(Stdio::from(log_err))
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .creation_flags(CREATE_NO_WINDOW);
 
     if !cuda_device.is_empty() {
         cmd.env("CUDA_VISIBLE_DEVICES", &cuda_device);
     }
 
-    let child = cmd.spawn().map_err(|e| format!("无法启动进程: {}", e))?;
+    let mut child = cmd.spawn().map_err(|e| format!("无法启动进程: {}", e))?;
     let pid = child.id();
+
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+
+    use std::io::{BufRead, BufReader, Write};
+
+    if let Some(stdout) = stdout {
+        let mut log_out_clone = log_out.try_clone().map_err(|e| e.to_string())?;
+        std::thread::spawn(move || {
+            let reader = BufReader::new(stdout);
+            for line in reader.lines() {
+                match line {
+                    Ok(l) if !l.contains("update_slots: all slots are idle") => {
+                        if writeln!(log_out_clone, "{}", l).is_err() {
+                            eprintln!("[Log] Failed to write stdout line to log file");
+                            break;
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        eprintln!("[Log] Failed to read stdout line: {}", e);
+                        break;
+                    }
+                }
+            }
+        });
+    }
+
+    if let Some(stderr) = stderr {
+        let mut log_err_clone = log_err.try_clone().map_err(|e| e.to_string())?;
+        std::thread::spawn(move || {
+            let reader = BufReader::new(stderr);
+            for line in reader.lines() {
+                match line {
+                    Ok(l) if !l.contains("update_slots: all slots are idle") => {
+                        if writeln!(log_err_clone, "{}", l).is_err() {
+                            eprintln!("[Log] Failed to write stderr line to log file");
+                            break;
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        eprintln!("[Log] Failed to read stderr line: {}", e);
+                        break;
+                    }
+                }
+            }
+        });
+    }
 
     {
         let mut guard = state.0.lock().unwrap();
         *guard = Some(pid);
+    }
+
+    {
+        let mut guard = port_state.0.lock().unwrap();
+        *guard = Some(port);
     }
 
     let _ = fs::write(log_dir.join("server.pid"), pid.to_string());
@@ -173,6 +242,7 @@ async fn start_server(
 async fn stop_server(
     state: State<'_, ServerPid>,
     proxy_state: State<'_, ProxyHandle>,
+    port_state: State<'_, ServerPort>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
     let mut guard = state.0.lock().unwrap();
@@ -187,6 +257,11 @@ async fn stop_server(
 
     if let Some(handle) = proxy_state.0.lock().unwrap().take() {
         handle.abort();
+    }
+
+    {
+        let mut guard = port_state.0.lock().unwrap();
+        *guard = None;
     }
 
     std::thread::sleep(Duration::from_millis(500));
@@ -306,11 +381,45 @@ async fn browse_file(app: tauri::AppHandle, filter_name: String, extension: Stri
     }
 }
 
+#[tauri::command]
+async fn get_bundled_server_path(app: tauri::AppHandle) -> Result<String, String> {
+    let path = find_file_path(&app, "llama-server.exe");
+    if path.exists() {
+        Ok(path.to_string_lossy().to_string())
+    } else {
+        Ok("".to_string())
+    }
+}
+
+#[tauri::command]
+async fn inspect_gguf(path: String) -> Result<GgufInfo, String> {
+    let clean_path = path.trim().trim_matches('"').trim_matches('\'');
+    if clean_path.is_empty() || !std::path::Path::new(clean_path).exists() {
+        return Err(format!("模型文件路径无效或不存在: {}", clean_path));
+    }
+    inspect_gguf_file(clean_path).map_err(|e| format!("解析 GGUF 失败: {}", e))
+}
+
+#[tauri::command]
+async fn estimate_vram_budget(
+    path: String,
+    ctx_size: u32,
+    cache_type_k: String,
+    cache_type_v: String,
+    gpu_vram_gb: Option<f64>,
+) -> Result<VramEstimate, String> {
+    let clean_path = path.trim().trim_matches('"').trim_matches('\'');
+    let info = inspect_gguf_file(clean_path).map_err(|e| format!("解析 GGUF 失败: {}", e))?;
+    let total_vram = gpu_vram_gb.unwrap_or(16.0);
+    Ok(estimate_vram(&info, ctx_size, &cache_type_k, &cache_type_v, total_vram))
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(ServerPid(Mutex::new(None)))
         .manage(ProxyHandle(Mutex::new(None)))
+        .manage(ServerPort(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             start_server,
             stop_server,
@@ -319,6 +428,9 @@ fn main() {
             save_profiles,
             open_log,
             browse_file,
+            get_bundled_server_path,
+            inspect_gguf,
+            estimate_vram_budget,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -10,7 +10,7 @@
 <div class="W">
 
 <div class="hdr">
-  <h1>🚀 LLaMA Server <span class="badge">Tauri · Pro</span></h1>
+  <h1>🚀 LLaMA Server <span class="badge">v0.3.0 · Pro</span></h1>
   <div class="prow">
     <select id="profileSelect" onchange="loadProfile()"></select>
     <button class="bs" onclick="saveProfile()">💾 保存</button>
@@ -25,135 +25,213 @@
   <div class="st" id="status" onclick="openLog()" title="点击查看实时日志"><span class="dot"></span><span id="stText">就绪</span></div>
 </div>
 
-<div class="card">
-  <div class="fr" style="align-items:center">
-    <label style="white-space:nowrap;color:#64748b;font-size:16px">服务器路径</label>
-    <div class="row-f g">
-      <input type="text" id="serverPath">
-      <button class="btn-file" onclick="browseFile('serverPath','exe')">📁</button>
-    </div>
-    <label class="tgl" style="flex-shrink:0" title="启用后将转译为 OpenAI 格式转发到 llama-server，并在指定端口暴露 /v1/messages">
-      <input type="checkbox" id="enableAnthropicProxy" onchange="updatePreview()">
-      <div class="tgl-track"><div class="tgl-thumb"></div></div>
-      <span class="tgl-lbl">启用 Anthropic API 兼容</span>
-    </label>
-    <input type="number" id="anthropicProxyPort" value="8081" style="width:80px;flex-shrink:0">
-    <input type="text" id="anthropicApiKey" placeholder="API Key（留空则不校验，局域网访问建议填写）" style="width:240px;flex-shrink:0">
-  </div>
-  <div class="fr">
-    <div class="col g"><label>主模型路径 (Main Model)</label>
-      <div class="row-f">
-        <input type="text" id="modelPath" oninput="onModelPathChange()">
-        <button class="btn-file" onclick="browseFile('modelPath','gguf')">📁</button>
+<!-- Tab Navigation Bar -->
+<div class="nav-tabs">
+  <button class="nav-tab active" id="tabBtnSettings" onclick="switchTab('settings')">⚙️ 引擎配置与参数</button>
+  <button class="nav-tab" id="tabBtnChat" onclick="switchTab('chat')">💬 实时测试聊天</button>
+  <button class="nav-tab" id="tabBtnGateway" onclick="switchTab('gateway')">🌐 API 网关与连接</button>
+</div>
+
+<!-- Tab View 1: Engine Settings -->
+<div id="viewSettings" class="tab-view active">
+  <div class="card">
+    <div class="fr" style="align-items:center">
+      <label style="white-space:nowrap;color:#64748b;font-size:16px">服务器路径</label>
+      <div class="row-f g">
+        <input type="text" id="serverPath" placeholder="如留空，将自动使用内置 CUDA 12.8 优化版引擎">
+        <button class="btn-file" onclick="browseFile('serverPath','exe')">📁</button>
       </div>
-    </div>
-    <div class="col g"><label>外部草稿模型 (Draft Model)</label>
-      <div class="row-f">
-        <input type="text" id="draftModelPath">
-        <button class="btn-file" onclick="browseFile('draftModelPath','gguf')">📁</button>
-      </div>
-    </div>
-  </div>
-  <div class="fr" style="align-items:center">
-    <label style="white-space:nowrap;color:#64748b;font-size:16px;flex-shrink:0">mmproj (Vision)</label>
-    <label class="tgl" style="flex-shrink:0">
-      <input type="checkbox" id="mmprojToggle" onchange="updateMmprojDim();updatePreview()">
-      <div class="tgl-track"><div class="tgl-thumb"></div></div>
-    </label>
-    <label style="white-space:nowrap;color:#64748b;font-size:16px;flex-shrink:0">视觉模型路径</label>
-    <div class="row-f" style="flex:1;min-width:0">
-      <input type="text" id="mmprojPath" style="min-width:0">
-      <button class="btn-file" id="mmprojBrowse" onclick="browseFile('mmprojPath','gguf')">📁</button>
-    </div>
-  </div>
-  <div class="fr">
-    <div class="col g"><label>别名</label><input type="text" id="alias"></div>
-    <div class="col" style="width:108px"><label>端口</label><input type="number" id="port" value="8080"></div>
-    <div class="col" style="flex-shrink:0"><label>Host</label>
-      <label class="tgl">
-        <input type="checkbox" id="hostToggle">
+      <label class="tgl" style="flex-shrink:0" title="启用后将转译为 OpenAI 格式转发到 llama-server，并在指定端口暴露 /v1/messages。新版 llama.cpp (PR #17570) 已原生支持，推荐优先关闭代理。">
+        <input type="checkbox" id="enableAnthropicProxy" onchange="updatePreview()">
         <div class="tgl-track"><div class="tgl-thumb"></div></div>
-        <span class="tgl-lbl">允许局域网访问</span>
+        <span class="tgl-lbl">启用 Anthropic API 兼容 <span style="font-size:11px;color:#64748b;margin-left:4px;cursor:help" title="新版 llama-server 已原生支持 /v1/messages，建议优先关闭此代理，将客户端直接指向主服务端口">(推荐关闭)</span></span>
       </label>
+      <input type="number" id="anthropicProxyPort" value="8081" style="width:80px;flex-shrink:0">
+      <input type="text" id="anthropicApiKey" placeholder="API Key（留空则不校验，局域网访问建议填写）" style="width:240px;flex-shrink:0">
     </div>
-    <div class="col" style="width:82px"><label>CUDA</label><input type="text" id="cudaDevice"></div>
+    <div class="fr">
+      <div class="col g"><label>主模型路径 (Main Model)</label>
+        <div class="row-f">
+          <input type="text" id="modelPath" oninput="onModelPathChange()">
+          <button class="btn-file" onclick="browseFile('modelPath','gguf')">📁</button>
+        </div>
+      </div>
+      <div class="col g"><label>外部草稿模型 (Draft Model)</label>
+        <div class="row-f">
+          <input type="text" id="draftModelPath">
+          <button class="btn-file" onclick="browseFile('draftModelPath','gguf')">📁</button>
+        </div>
+      </div>
+    </div>
+    <!-- GGUF File Header & VRAM Inspector Panel -->
+    <div id="ggufInspector" class="gguf-card" style="display:none">
+      <div class="gguf-header">
+        <div class="gguf-title">
+          <span class="gguf-badge" id="ggufArch">—</span>
+          <span class="gguf-name" id="ggufName">正在解析 GGUF 结构...</span>
+        </div>
+        <div class="gguf-quant" id="ggufQuant">—</div>
+      </div>
+      <div class="gguf-stats">
+        <div class="gguf-stat-item">
+          <span class="lbl">模型文件大小</span>
+          <span class="val" id="ggufSize">—</span>
+        </div>
+        <div class="gguf-stat-item">
+          <span class="lbl">网络/总层数</span>
+          <span class="val" id="ggufLayers">—</span>
+        </div>
+        <div class="gguf-stat-item">
+          <span class="lbl">原生最大 Context</span>
+          <span class="val" id="ggufMaxCtx">—</span>
+        </div>
+        <div class="gguf-stat-item">
+          <span class="lbl">预估显存占用 (RTX 5060 Ti)</span>
+          <span class="val highlight" id="ggufVramEst">—</span>
+        </div>
+      </div>
+      <div class="gguf-action-bar">
+        <span class="gguf-hint" id="ggufNglHint">⚡ 推荐 GPU 卸载层数 (-ngl): <b>—</b></span>
+        <button type="button" class="btn-apply-ngl" id="btnApplyNgl" onclick="applyRecommendedNgl()">一键应用最佳 NGL</button>
+      </div>
+    </div>
+    <div class="fr" style="align-items:center">
+      <label style="white-space:nowrap;color:#64748b;font-size:16px;flex-shrink:0">mmproj (Vision)</label>
+      <label class="tgl" style="flex-shrink:0">
+        <input type="checkbox" id="mmprojToggle" onchange="updateMmprojDim();updatePreview()">
+        <div class="tgl-track"><div class="tgl-thumb"></div></div>
+      </label>
+      <label style="white-space:nowrap;color:#64748b;font-size:16px;flex-shrink:0">视觉模型路径</label>
+      <div class="row-f" style="flex:1;min-width:0">
+        <input type="text" id="mmprojPath" style="min-width:0">
+        <button class="btn-file" id="mmprojBrowse" onclick="browseFile('mmprojPath','gguf')">📁</button>
+      </div>
+    </div>
+    <div class="fr">
+      <div class="col g"><label>别名</label><input type="text" id="alias"></div>
+      <div class="col" style="width:108px"><label>端口</label><input type="number" id="port" value="8080"></div>
+      <div class="col" style="flex-shrink:0"><label>Host</label>
+        <label class="tgl">
+          <input type="checkbox" id="hostToggle">
+          <div class="tgl-track"><div class="tgl-thumb"></div></div>
+          <span class="tgl-lbl">允许局域网访问</span>
+        </label>
+      </div>
+      <div class="col" style="width:82px"><label>CUDA</label><input type="text" id="cudaDevice"></div>
+    </div>
+    <div class="fr">
+      <div class="col" style="width:78px"><label>GPU层</label><input type="number" id="gpuLayers" value="32"></div>
+      <div class="col" style="width:102px"><label>上下文</label><input type="number" id="ctxSize" value="4096"></div>
+      <div class="col" style="width:78px"><label>Batch</label><input type="number" id="batchSize"></div>
+      <div class="col" style="width:78px"><label>uBatch</label><input type="number" id="ubatchSize"></div>
+      <div class="col" style="width:90px"><label>-np</label><input type="number" id="numPhysGpu"></div>
+      <div class="col" style="width:102px"><label>cacheK</label>
+        <select id="cacheK"><option value="f16">f16</option><option value="q8_0">q8_0</option><option value="q4_0">q4_0</option></select>
+      </div>
+      <div class="col" style="width:102px"><label>cacheV</label>
+        <select id="cacheV"><option value="f16">f16</option><option value="q8_0">q8_0</option><option value="q4_0">q4_0</option></select>
+      </div>
+      <div class="col" style="width:102px"><label>cacheRAM</label><input type="number" id="cacheRam"></div>
+      <div class="col" style="width:108px"><label>线程</label><input type="number" id="threads"></div>
+      <div class="col" style="width:108px"><label>批线程</label><input type="number" id="threadsBatch"></div>
+    </div>
+    <div class="checks">
+      <label class="ck"><input type="checkbox" id="jinja"> jinja</label>
+      <label class="ck"><input type="checkbox" id="flashAttn"> flash-attn</label>
+      <label class="ck"><input type="checkbox" id="noMmap"> no-mmap</label>
+      <label class="ck"><input type="checkbox" id="kvUnified"> kv-unified</label>
+      <label class="ck"><input type="checkbox" id="contBatching"> cont-batch</label>
+      <label class="ck"><input type="checkbox" id="metrics"> metrics</label>
+      <label class="ck"><input type="checkbox" id="reasoning"> reasoning</label>
+    </div>
+    <div class="fr" style="margin-top:9px">
+      <div class="col" style="width:200px"><label>投机解码 (内置MTP专用)</label>
+        <select id="specType" onchange="updateSpecVis();updatePreview()">
+          <option value="none">关闭 (或使用外部小模型)</option>
+          <option value="draft-mtp">draft-mtp (仅限MTP模型)</option>
+          <option value="nfnet">nfnet</option>
+          <option value="ptn">ptn</option>
+        </select>
+      </div>
+      <div class="col" id="cDN" style="width:75px"><label>草稿N</label><input type="number" id="draftN"></div>
+      <div class="col" id="cDNgl" style="width:75px"><label>NGL</label><input type="number" id="draftNgl"></div>
+      <div class="col" id="cDK" style="width:102px"><label>草稿cacheK</label>
+        <select id="draftTypeK"><option value="f16">f16</option><option value="q8_0">q8_0</option><option value="q4_0">q4_0</option></select>
+      </div>
+      <div class="col" id="cDV" style="width:102px"><label>草稿cacheV</label>
+        <select id="draftTypeV"><option value="f16">f16</option><option value="q8_0">q8_0</option><option value="q4_0">q4_0</option></select>
+      </div>
+      <div class="col" style="width:108px"><label>推理预算</label><input type="number" id="reasoningBudget"></div>
+      <div class="col" style="width:90px"><label>日志级别</label>
+        <select id="logVerbosity"><option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option></select>
+      </div>
+      <div class="col" style="width:100px"><label>日志格式</label>
+        <select id="logFormat"><option value="text">text</option><option value="json">json</option></select>
+      </div>
+      <div class="col" style="width:114px"><label>图片minTok</label><input type="number" id="imageMinTokens"></div>
+    </div>
+    <div class="fr" style="margin-top:9px">
+      <div class="col g"><label>额外参数（每行一个）</label>
+        <textarea id="extraParams" rows="2" style="resize:vertical;font-family:Consolas,monospace;font-size:11px;line-height:1.5"></textarea>
+      </div>
+    </div>
   </div>
-  <div class="fr">
-    <div class="col" style="width:78px"><label>GPU层</label><input type="number" id="gpuLayers" value="32"></div>
-    <div class="col" style="width:102px"><label>上下文</label><input type="number" id="ctxSize" value="4096"></div>
-    <div class="col" style="width:78px"><label>Batch</label><input type="number" id="batchSize"></div>
-    <div class="col" style="width:78px"><label>uBatch</label><input type="number" id="ubatchSize"></div>
-    <div class="col" style="width:90px"><label>-np</label><input type="number" id="numPhysGpu"></div>
-    <div class="col" style="width:102px"><label>cacheK</label>
-      <select id="cacheK"><option value="f16">f16</option><option value="q8_0">q8_0</option><option value="q4_0">q4_0</option></select>
+  <div class="cmd" id="cmdPreview"></div>
+</div>
+
+<!-- Tab View 2: Dedicated Chat Panel -->
+<div id="viewChat" class="tab-view">
+  <div class="card" id="chatPanel">
+    <div class="chat-hdr">
+      <span class="chat-title">💬 实时测试聊天</span>
+      <div class="chat-opts">
+        <span id="chatSpeed" style="font-size:15px;font-weight:700;color:#64748b;white-space:nowrap;min-width:72px;text-align:right">— t/s</span>
+        <label>系统提示</label><input type="text" id="chatSys" style="width:240px" placeholder="（可选）">
+        <label>温度</label><input type="number" id="chatTemp" style="width:60px" value="0.7" step="0.1" min="0" max="2">
+        <label>MaxTok</label><input type="number" id="chatMaxTok" style="width:75px" value="4096">
+        <button class="b3" style="font-size:14px;padding:7px 12px" onclick="clearChat()">清空</button>
+      </div>
     </div>
-    <div class="col" style="width:102px"><label>cacheV</label>
-      <select id="cacheV"><option value="f16">f16</option><option value="q8_0">q8_0</option><option value="q4_0">q4_0</option></select>
-    </div>
-    <div class="col" style="width:102px"><label>cacheRAM</label><input type="number" id="cacheRam"></div>
-    <div class="col" style="width:108px"><label>线程</label><input type="number" id="threads"></div>
-    <div class="col" style="width:108px"><label>批线程</label><input type="number" id="threadsBatch"></div>
-  </div>
-  <div class="checks">
-    <label class="ck"><input type="checkbox" id="jinja"> jinja</label>
-    <label class="ck"><input type="checkbox" id="flashAttn"> flash-attn</label>
-    <label class="ck"><input type="checkbox" id="noMmap"> no-mmap</label>
-    <label class="ck"><input type="checkbox" id="kvUnified"> kv-unified</label>
-    <label class="ck"><input type="checkbox" id="contBatching"> cont-batch</label>
-    <label class="ck"><input type="checkbox" id="metrics"> metrics</label>
-    <label class="ck"><input type="checkbox" id="reasoning"> reasoning</label>
-  </div>
-  <div class="fr" style="margin-top:9px">
-    <div class="col" style="width:200px"><label>投机解码 (内置MTP专用)</label>
-      <select id="specType" onchange="updateSpecVis();updatePreview()">
-        <option value="none">关闭 (或使用外部小模型)</option>
-        <option value="draft-mtp">draft-mtp (仅限MTP模型)</option>
-        <option value="nfnet">nfnet</option>
-        <option value="ptn">ptn</option>
-      </select>
-    </div>
-    <div class="col" id="cDN" style="width:75px"><label>草稿N</label><input type="number" id="draftN"></div>
-    <div class="col" id="cDNgl" style="width:75px"><label>NGL</label><input type="number" id="draftNgl"></div>
-    <div class="col" id="cDK" style="width:102px"><label>草稿cacheK</label>
-      <select id="draftTypeK"><option value="f16">f16</option><option value="q8_0">q8_0</option><option value="q4_0">q4_0</option></select>
-    </div>
-    <div class="col" id="cDV" style="width:102px"><label>草稿cacheV</label>
-      <select id="draftTypeV"><option value="f16">f16</option><option value="q8_0">q8_0</option><option value="q4_0">q4_0</option></select>
-    </div>
-    <div class="col" style="width:108px"><label>推理预算</label><input type="number" id="reasoningBudget"></div>
-    <div class="col" style="width:90px"><label>日志级别</label>
-      <select id="logVerbosity"><option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option></select>
-    </div>
-    <div class="col" style="width:100px"><label>日志格式</label>
-      <select id="logFormat"><option value="text">text</option><option value="json">json</option></select>
-    </div>
-    <div class="col" style="width:114px"><label>图片minTok</label><input type="number" id="imageMinTokens"></div>
-  </div>
-  <div class="fr" style="margin-top:9px">
-    <div class="col g"><label>额外参数（每行一个）</label>
-      <textarea id="extraParams" rows="2" style="resize:vertical;font-family:Consolas,monospace;font-size:11px;line-height:1.5"></textarea>
+    <div id="chatBody">
+      <div id="chatMsgs"></div>
+      <div class="chat-foot">
+        <textarea id="chatInput" rows="3" placeholder="输入消息… Enter 发送，Shift+Enter 换行"></textarea>
+        <button id="btnSend" onclick="sendChat()">发送</button>
+      </div>
     </div>
   </div>
 </div>
 
-<div class="cmd" id="cmdPreview"></div>
-
-<div class="card" id="chatPanel" style="margin-top:14px">
-  <div class="chat-hdr">
-    <span class="chat-title" onclick="toggleChat()">💬 聊天 <span id="chatToggleIcon">▲</span></span>
-    <div class="chat-opts">
-      <span id="chatSpeed" style="font-size:15px;font-weight:700;color:#64748b;white-space:nowrap;min-width:72px;text-align:right">— t/s</span>
-      <label>系统提示</label><input type="text" id="chatSys" style="width:240px" placeholder="（可选）">
-      <label>温度</label><input type="number" id="chatTemp" style="width:60px" value="0.7" step="0.1" min="0" max="2">
-      <label>MaxTok</label><input type="number" id="chatMaxTok" style="width:75px" value="4096">
-      <button class="b3" style="font-size:14px;padding:7px 12px" onclick="clearChat()">清空</button>
+<!-- Tab View 3: API Gateway & Connection Dashboard -->
+<div id="viewGateway" class="tab-view">
+  <div class="card">
+    <h2 style="font-size:18px;margin-bottom:14px;color:#f8fafc">🌐 API 服务网关与客户端连接指南</h2>
+    <div class="gateway-grid">
+      <div class="gw-card">
+        <div class="gw-hdr">
+          <span class="gw-title">OpenAI 兼容对话端点</span>
+          <button class="btn-copy-gw" onclick="copyText('http://localhost:8080/v1')">📋 复制</button>
+        </div>
+        <div class="gw-code">http://localhost:8080/v1</div>
+        <div class="gw-desc">适用于 Chatbox, Cherry Studio, Lobe Chat, Open WebUI 等标准客户端。</div>
+      </div>
+      <div class="gw-card">
+        <div class="gw-hdr">
+          <span class="gw-title">Anthropic Messages API 端点</span>
+          <button class="btn-copy-gw" onclick="copyText('http://localhost:8081/v1/messages')">📋 复制</button>
+        </div>
+        <div class="gw-code">http://localhost:8081/v1/messages</div>
+        <div class="gw-desc">适用于 Claude Code, Cline, Roo Code 等原生 Anthropic 客户端。</div>
+      </div>
     </div>
-  </div>
-  <div id="chatBody">
-    <div id="chatMsgs"></div>
-    <div class="chat-foot">
-      <textarea id="chatInput" rows="3" placeholder="输入消息… Enter 发送，Shift+Enter 换行"></textarea>
-      <button id="btnSend" onclick="sendChat()">发送</button>
+    <div class="gw-env-box" style="margin-top:16px">
+      <div class="gw-hdr">
+        <span class="gw-title">Claude Code / Terminal 环境变量一键复制 (PowerShell)</span>
+        <button class="btn-copy-gw" onclick="copyText('$env:ANTHROPIC_BASE_URL=\'http://localhost:8081\'; $env:ANTHROPIC_API_KEY=\'dummy\'; claude')">📋 复制</button>
+      </div>
+      <pre class="gw-code" style="font-size:12px;margin-bottom:0">$env:ANTHROPIC_BASE_URL = "http://localhost:8081"
+$env:ANTHROPIC_API_KEY = "dummy"
+claude</pre>
     </div>
   </div>
 </div>

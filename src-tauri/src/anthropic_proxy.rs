@@ -1,3 +1,16 @@
+// ======================================================================================
+// Anthropic Messages API 兼容代理模块
+//
+// 📌 维护说明 (PR #17570)：
+// llama.cpp 已经在 PR #17570 中增加了对 Anthropic Messages API (/v1/messages)
+// 的原生支持。新版客户端推荐直接指向 llama-server 的主服务端口以获得最佳性能。
+// 
+// 本模块（内嵌 Axum 代理）之所以作为备用保留，出于以下考虑：
+// 1. 兼容老版本 llama.cpp（未合并 PR #17570 的旧构建）。
+// 2. 局域网访问下的简单 API Key 验证（llama-server 暂无自带轻量安全校验）。
+// 3. 应对官方或客户端接口细节的兼容性微调需求。
+// ======================================================================================
+
 use async_stream::stream;
 use axum::{
     extract::{Request, State},
@@ -477,14 +490,16 @@ fn build_sse_stream(
         for (_, acc) in tool_accs.into_iter() {
             let idx = next_index;
             next_index += 1;
-            let input: Value = serde_json::from_str(&acc.arguments).unwrap_or_else(|_| json!({}));
+            if let Err(e) = serde_json::from_str::<Value>(&acc.arguments) {
+                eprintln!("⚠️ [Anthropic Proxy] Tool arguments are not valid JSON: {} | raw: {}", e, acc.arguments);
+            }
             yield Ok(Event::default().event("content_block_start").data(json!({
                 "type": "content_block_start", "index": idx,
                 "content_block": {"type": "tool_use", "id": acc.id, "name": acc.name, "input": {}}
             }).to_string()));
             yield Ok(Event::default().event("content_block_delta").data(json!({
                 "type": "content_block_delta", "index": idx,
-                "delta": {"type": "input_json_delta", "partial_json": input.to_string()}
+                "delta": {"type": "input_json_delta", "partial_json": acc.arguments}
             }).to_string()));
             yield Ok(Event::default().event("content_block_stop").data(json!({
                 "type": "content_block_stop", "index": idx

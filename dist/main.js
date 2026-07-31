@@ -5,6 +5,36 @@ var tauriInvoke = (window.__TAURI__ && window.__TAURI__.core) ? window.__TAURI__
 
 function $(i) { return document.getElementById(i); }
 
+// --- Tab Switching ---
+function switchTab(tabName) {
+    document.querySelectorAll('.nav-tab').forEach(function(btn) { btn.classList.remove('active'); });
+    document.querySelectorAll('.tab-view').forEach(function(view) { view.classList.remove('active'); });
+
+    if (tabName === 'settings') {
+        $('tabBtnSettings').classList.add('active');
+        $('viewSettings').classList.add('active');
+    } else if (tabName === 'chat') {
+        $('tabBtnChat').classList.add('active');
+        $('viewChat').classList.add('active');
+        setTimeout(fitChatHeight, 50);
+    } else if (tabName === 'gateway') {
+        $('tabBtnGateway').classList.add('active');
+        $('viewGateway').classList.add('active');
+    }
+}
+
+function copyText(txt) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(txt).then(function() {
+            showToast('已复制到剪贴板！');
+        }).catch(function() {
+            showToast('复制失败');
+        });
+    } else {
+        showToast('剪贴板 API 不可用');
+    }
+}
+
 // --- File browsing ---
 async function browseFile(tid, type) {
     var filterName = '', extension = '';
@@ -23,7 +53,8 @@ async function browseFile(tid, type) {
     }
 }
 
-// --- Model path auto-detect MTP ---
+var lastRecommendedNgl = null;
+
 function onModelPathChange() {
     var path = $('modelPath').value.toLowerCase();
     var spec = $('specType');
@@ -34,6 +65,66 @@ function onModelPathChange() {
     }
     updateSpecVis();
     updatePreview();
+    inspectModelPath();
+}
+
+async function inspectModelPath() {
+    var path = $('modelPath').value.trim().replace(/^["']|["']$/g, '');
+    var panel = $('ggufInspector');
+    if (!path || !window.__TAURI__) {
+        if (panel) panel.style.display = 'none';
+        return;
+    }
+
+    try {
+        var info = await tauriInvoke('inspect_gguf', { path: path });
+        if (!info || !info.architecture) {
+            panel.style.display = 'none';
+            return;
+        }
+        panel.style.display = 'block';
+        $('ggufArch').textContent = info.architecture.toUpperCase();
+        $('ggufName').textContent = info.model_name || path.split(/[\\/]/).pop();
+        $('ggufQuant').textContent = info.quantization_type || 'Quantized';
+
+        var sizeGb = (info.file_size_bytes / (1024 * 1024 * 1024)).toFixed(2);
+        $('ggufSize').textContent = sizeGb + ' GB';
+        $('ggufLayers').textContent = (info.block_count || '—') + ' 层';
+        $('ggufMaxCtx').textContent = info.context_length ? (info.context_length >= 1024 ? (info.context_length / 1024) + 'k' : info.context_length) : '未知';
+
+        var ctx = parseInt($('ctxSize').value, 10) || 8192;
+        var cacheK = $('cacheK').value || 'q8_0';
+        var cacheV = $('cacheV').value || 'q8_0';
+        var est = await tauriInvoke('estimate_vram_budget', {
+            path: path,
+            ctxSize: ctx,
+            cacheTypeK: cacheK,
+            cacheTypeV: cacheV,
+            gpuVramGb: 16.0
+        });
+
+        lastRecommendedNgl = est.recommended_ngl;
+
+        var vramTxt = est.total_estimated_vram_gb.toFixed(1) + ' GB / 16.0 GB';
+        $('ggufVramEst').textContent = vramTxt;
+        if (est.can_fully_offload) {
+            $('ggufVramEst').style.color = '#4ade80';
+            $('ggufNglHint').innerHTML = '⚡ 显存完全包含模型 (' + est.total_estimated_vram_gb.toFixed(1) + 'GB)，推荐 GPU 层数 (-ngl): <b>' + est.recommended_ngl + ' 层 (100% 卸载)</b>';
+        } else {
+            $('ggufVramEst').style.color = '#f59e0b';
+            $('ggufNglHint').innerHTML = '⚠️ 显存紧凑 (预计 ' + est.total_estimated_vram_gb.toFixed(1) + 'GB)，推荐 GPU 卸载: <b>' + est.recommended_ngl + ' / ' + (info.block_count || '—') + ' 层 (' + est.offload_percentage.toFixed(0) + '%)</b>';
+        }
+    } catch(e) {
+        if (panel) panel.style.display = 'none';
+    }
+}
+
+function applyRecommendedNgl() {
+    if (lastRecommendedNgl !== null) {
+        $('gpuLayers').value = lastRecommendedNgl;
+        updatePreview();
+        showToast('已一键应用最佳 GPU 层数 (-ngl): ' + lastRecommendedNgl);
+    }
 }
 
 // --- Profile management ---
@@ -70,6 +161,7 @@ function loadProfile() {
     if (!f) return;
     applyFields(f);
     updatePreview();
+    inspectModelPath();
     localStorage.setItem('lastProfile', name);
 }
 
@@ -706,7 +798,7 @@ function fitChatHeight() {
 
 // --- Init ---
 async function init() {
-    // 启动时将窗口高度设为屏幕可用高度，宽度保持当前设定不变
+    // 启动时根据屏幕真实可用高度按 82% 动态计算窗口高度（如 2560x1440 屏幕下为 1180px），并居中定位
     if (window.__TAURI__ && window.__TAURI__.window) {
         try {
             var W = window.__TAURI__.window;
@@ -714,10 +806,11 @@ async function init() {
             var current = await win.outerSize();
             var scale = await win.scaleFactor();
             var w = Math.round(current.width / scale);
-            var h = window.screen.availHeight;
+            var h = Math.max(720, Math.round(window.screen.availHeight * 0.82));
             var x = Math.round((window.screen.availWidth - w) / 2);
+            var y = Math.max(0, Math.round((window.screen.availHeight - h) / 2));
             await win.setSize(new W.LogicalSize(w, h));
-            await win.setPosition(new W.LogicalPosition(x, 0));
+            await win.setPosition(new W.LogicalPosition(x, y));
         } catch(e) { console.error('窗口大小调整失败:', e); }
     }
 
@@ -731,11 +824,37 @@ async function init() {
 
     refreshProfiles(localStorage.getItem('lastProfile'));
     loadProfile();
+
+    if (window.__TAURI__) {
+        try {
+            var bundledPath = await tauriInvoke('get_bundled_server_path');
+            if (bundledPath) {
+                var currentPath = $('serverPath').value;
+                if (!currentPath || currentPath === 'C:\\AI\\llama\\llama-server.exe') {
+                    $('serverPath').value = bundledPath;
+                    updatePreview();
+                }
+            }
+        } catch(e) {}
+    }
     updatePreview();
     updateMmprojDim();
     updateSpecVis();
     checkStartupHealth();
     fitChatHeight();
+
+    // 延时 100ms 确保页面节点与路径填充完毕后自动感知模型并显示 GGUF 卡片与 NGL 推荐
+    setTimeout(function() {
+        inspectModelPath();
+    }, 100);
+
+    ['ctxSize','cacheK','cacheV'].forEach(function(id) {
+        var el = $(id);
+        if (el) {
+            el.addEventListener('input', inspectModelPath);
+            el.addEventListener('change', inspectModelPath);
+        }
+    });
 
     document.querySelectorAll('input,select,textarea').forEach(function(el) {
         el.addEventListener('input', updatePreview);

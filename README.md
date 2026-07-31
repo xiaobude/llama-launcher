@@ -214,7 +214,11 @@ llama-server 原生只提供 OpenAI 兼容接口，部分客户端（如 Claude 
   $env:ANTHROPIC_API_KEY = "dummy"   # 本地代理不校验 key，填任意非空值即可
   claude
   ```
-- **已知限制**（设计取舍，非缺陷）：
+- **📌 重要变动说明（原生支持提示）**：
+  - **新版原生支持**：新版 `llama.cpp`（自 **PR #17570** 开始）已在 `llama-server` 内部原生实现了对 Anthropic `/v1/messages` 接口的支持（在其主服务端口上）。
+  - **推荐使用方式**：如果你使用的是较新版本的 `llama-server`，**建议优先关闭此处的“启用 Anthropic API 兼容”代理**。直接将客户端（例如 Claude Code）的 `ANTHROPIC_BASE_URL` 变量指向主服务端口（默认 `http://localhost:8080`），可享受到更加原生和流畅的体验（如无中间人转发开销、原生的 Token 统计和更顺畅的 Tool Use 支持）。
+  - **代理保留原因**：此内置代理目前作为备用保留，用于向下兼容未包含 PR #17570 的旧版 `llama-server`，以及在局域网内提供简易的 `API Key` 访问控制。
+- **已知限制**（仅针对本内嵌代理）：
   - 不支持图片/多模态内容块、`/v1/models` 等枚举接口、`tool_choice` 强制策略细节。
   - `count_tokens` 借用 llama-server 的 `/tokenize` 接口统计 token 数组长度，是近似值，并非精确的 Anthropic tokenizer 结果。
   - 工具调用（`tool_use`）流式输出是等模型生成完整 JSON 后一次性发出，不是逐字符增量推送。
