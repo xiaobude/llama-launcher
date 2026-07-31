@@ -15,7 +15,8 @@ logs/
 /llama-source
 /llama.cpp-*
 
-# IDE / OS
+# Temporary scratch scripts
+scratch/
 .vscode/
 .idea/
 .DS_Store
