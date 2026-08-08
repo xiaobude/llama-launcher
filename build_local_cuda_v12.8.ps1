@@ -1,8 +1,20 @@
-# build_local.ps1 - RTX 5060 Ti + i5-13400 本地极速编译脚本
+﻿﻿# build_local.ps1 - RTX 5060 Ti + i5-13400 本地极速编译脚本
 # 注：cudart / cublasLt 可以做到零 DLL，cublas64_*.dll 在 Windows 上没有静态版可选，
 #     会被自动拷贝到 exe 同目录，这是 NVIDIA 的平台限制，不是配置错误。
 $ErrorActionPreference = "Stop"
-Write-Host "=== 正在启动本地极速编译 (RTX 5060 Ti + i5-13400) ===" -ForegroundColor Green
+# 0.0 自动加载 Visual Studio 环境（为 Ninja 提供 cl.exe 及 Windows SDK 头文件支持）
+$vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -products * -latest -property installationPath 2>$null
+if ($vsPath) {
+    $vcvars = Join-Path $vsPath "VC\Auxiliary\Build\vcvars64.bat"
+    if (Test-Path $vcvars) {
+        cmd.exe /c "`"$vcvars`" && set" | ForEach-Object {
+            if ($_ -match '^(.*?)=(.*)$') {
+                Set-Item -Path "env:$($matches[1])" -Value $matches[2]
+            }
+        }
+        Write-Host "0/5 已成功加载 MSVC x64 编译环境 (vcvars64.bat)" -ForegroundColor Cyan
+    }
+}
 
 # 0. 强制本次会话使用 CUDA 12.8 编译（不改动系统级 CUDA_PATH，只影响本脚本进程）
 #    原因：CUDA 13.x 在 Blackwell(sm_120) 上会让 MMQ 量化矩阵乘 kernel 崩溃/回退到更慢的 cuBLAS 路径，
@@ -20,29 +32,50 @@ $nvccVersion = & nvcc --version 2>&1 | Select-String "release"
 Write-Host "        当前 nvcc: $nvccVersion" -ForegroundColor Cyan
 
 # 1. 检查 llama.cpp 源码目录
-$sourceDir = "llama.cpp-b10199"
-if (-not (Test-Path "llama.cpp-b10199")) {
-    $sourceDir = "llama-source"
-}
+$sourceDir = "llama-source"
 if (-not (Test-Path $sourceDir)) {
-    Write-Host "1/5 Cloning llama.cpp source..." -ForegroundColor Cyan
-    git clone --depth 50 https://github.com/ggml-org/llama.cpp.git llama-source
-    $sourceDir = "llama-source"
+    if (Test-Path "llama.cpp-b10199") { $sourceDir = "llama.cpp-b10199" }
+    else {
+        Write-Host "1/5 正在克隆 llama.cpp 源码..." -ForegroundColor Cyan
+        git clone --depth 50 https://github.com/ggml-org/llama.cpp.git llama-source
+        $sourceDir = "llama-source"
+    }
 }
-Write-Host "1/5 Using source directory [$sourceDir]" -ForegroundColor Cyan
+Write-Host "1/5 检测到已存在源码目录 [$sourceDir]，直接使用本地源码编译 (跳过网络 git pull)..." -ForegroundColor Cyan
 Set-Location $sourceDir
 
-# 2. 提取真实构建号
-$tagRaw = ""
-try {
-    $release = Invoke-RestMethod -Uri "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest"
-    $tagRaw = $release.tag_name
-} catch { $tagRaw = "" }
-$tagNum = [regex]::Match($tagRaw, '\d+').Value
-if (-not $tagNum) { $tagNum = "10199" }
-$commitHash = (git rev-parse --short HEAD 2>$null)
-if (-not $commitHash) { $commitHash = "b10199" }
-Write-Host "2/5 提取版本信息: Build #$tagNum ($commitHash)" -ForegroundColor Cyan
+# 2. 提取本地真实构建号
+$tagNum = ""
+$commitHash = ""
+
+if (Test-Path ".git") {
+    $describe = (git describe --tags --always 2>$null)
+    if ($describe) {
+        $tagMatch = [regex]::Match($describe, 'b?(\d+)')
+        if ($tagMatch.Success) { $tagNum = $tagMatch.Groups[1].Value }
+    }
+    $commitHash = (git rev-parse --short HEAD 2>$null)
+}
+
+if (-not $tagNum) {
+    $currentName = (Get-Item .).Name
+    $matchDir = [regex]::Match($currentName, 'b?(\d{4,5})')
+    if ($matchDir.Success) { $tagNum = $matchDir.Groups[1].Value }
+}
+
+if (-not $tagNum) {
+    if (Test-Path "CMakeLists.txt") {
+        $txt = Get-Content "CMakeLists.txt" -Raw
+        $m = [regex]::Match($txt, 'LLAMA_BUILD_NUMBER\s+(\d+)')
+        if ($m.Success) { $tagNum = $m.Groups[1].Value }
+    }
+}
+
+# 2.4 兜底机制：优先锁定 9902 本地版本号
+if (-not $tagNum) { $tagNum = "9902" }
+if (-not $commitHash) { $commitHash = "b$tagNum" }
+
+Write-Host "2/5 成功锁定本地编译版本: Build #$tagNum ($commitHash)" -ForegroundColor Cyan
 
 # 3. 自动修补 CMakeLists.txt，静态化 cudart 和 cublasLt（Zero DLL 能做到的部分）
 Get-ChildItem -Path . -Recurse -Filter "CMakeLists.txt" | ForEach-Object {
@@ -67,19 +100,38 @@ cmake .. -DCMAKE_BUILD_TYPE=Release `
   -DBUILD_SHARED_LIBS=OFF `
   -DGGML_CUDA=ON `
   -DGGML_CUDA_FORCE_CUBLAS=OFF `
-  -DCMAKE_CUDA_ARCHITECTURES="120" `
-  -DGGML_CUDA_FA_ALL_QUANTS=ON `
-  -DLLAMA_BUILD_EXAMPLES=OFF `
-  -DLLAMA_BUILD_TESTS=OFF `
-  -DLLAMA_BUILD_SERVER=ON `
-  -DGGML_NATIVE=OFF `
-  -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON
+$cmakeArgs = @(
+    "..",
+    "-DCMAKE_BUILD_TYPE=Release",
+    "-DLLAMA_BUILD_NUMBER=$tagNum",
+    "-DLLAMA_BUILD_COMMIT=$commitHash",
+    "-DCMAKE_CUDA_RUNTIME_LIBRARY=Static",
+    "-DBUILD_SHARED_LIBS=OFF",
+    "-DGGML_CUDA=ON",
+    "-DGGML_CUDA_FORCE_CUBLAS=OFF",
+    "-DCMAKE_CUDA_ARCHITECTURES=120",
+    "-DGGML_CUDA_FA_ALL_QUANTS=ON",
+    "-DLLAMA_BUILD_EXAMPLES=OFF",
+    "-DLLAMA_BUILD_TESTS=OFF",
+    "-DLLAMA_BUILD_SERVER=ON",
+    "-DGGML_NATIVE=OFF",
+    "-DGGML_AVX2=ON",
+    "-DGGML_FMA=ON",
+    "-DGGML_F16C=ON"
+)
+$oldEap = $ErrorActionPreference
+$ErrorActionPreference = "SilentlyContinue"
+& cmake.exe @cmakeArgs
+$ErrorActionPreference = $oldEap
 if ($LASTEXITCODE -ne 0) { throw "CMake 配置失败，退出码 $LASTEXITCODE" }
 
-# 5. 调用 MSVC 并行编译
-Write-Host "4/5 正在进行多核并行编译 (-j 16)..." -ForegroundColor Cyan
-cmake --build . --config Release --target llama-server -j 16
+# 5. 调用 MSVC 多核并行极速编译 (静默过滤繁杂的 per-file 输出与编译警告)
+Write-Host "4/5 正在进行多核极速编译 (16 线程)..." -ForegroundColor Cyan
+$ErrorActionPreference = "SilentlyContinue"
+& cmake.exe --build . --config Release --target llama-server --parallel 16 -- /v:q /nologo
+$ErrorActionPreference = $oldEap
 if ($LASTEXITCODE -ne 0) { throw "编译失败，退出码 $LASTEXITCODE" }
+Write-Host "        编译 100% 完成！" -ForegroundColor Cyan
 Set-Location ..\..
 
 # 6. 复制生成的二进制到根目录及 src-tauri/resources，自动补上 cublas64_*.dll
@@ -114,4 +166,4 @@ if ($exe) {
     }
 } else {
     Write-Error "编译似乎失败了：在 $sourceDir\build 下没有找到 llama-server.exe"
-}
+}

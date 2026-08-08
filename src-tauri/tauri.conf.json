@@ -1,6 +1,6 @@
 {
   "productName": "LLaMA 启动器 Pro",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "identifier": "com.getai.llama-launcher",
   "build": {
     "frontendDist": "../dist",

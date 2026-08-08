@@ -10,7 +10,7 @@
 <div class="W">
 
 <div class="hdr">
-  <h1>🚀 LLaMA Server <span class="badge">v0.3.0 · Pro</span></h1>
+  <h1>🚀 LLaMA Server <span class="badge">v0.4.0 · Pro</span></h1>
   <div class="prow">
     <select id="profileSelect" onchange="loadProfile()"></select>
     <button class="bs" onclick="saveProfile()">💾 保存</button>
@@ -30,6 +30,7 @@
   <button class="nav-tab active" id="tabBtnSettings" onclick="switchTab('settings')">⚙️ 引擎配置与参数</button>
   <button class="nav-tab" id="tabBtnChat" onclick="switchTab('chat')">💬 实时测试聊天</button>
   <button class="nav-tab" id="tabBtnGateway" onclick="switchTab('gateway')">🌐 API 网关与连接</button>
+  <button class="nav-tab" id="tabBtnCompile" onclick="switchTab('compile')">🛠️ 引擎编译</button>
 </div>
 
 <!-- Tab View 1: Engine Settings -->
@@ -163,7 +164,7 @@
       </div>
       <div class="col" style="width:108px"><label>推理预算</label><input type="number" id="reasoningBudget"></div>
       <div class="col" style="width:90px"><label>日志级别</label>
-        <select id="logVerbosity"><option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option></select>
+        <select id="logVerbosity"><option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select>
       </div>
       <div class="col" style="width:100px"><label>日志格式</label>
         <select id="logFormat"><option value="text">text</option><option value="json">json</option></select>
@@ -232,6 +233,81 @@
       <pre class="gw-code" style="font-size:12px;margin-bottom:0">$env:ANTHROPIC_BASE_URL = "http://localhost:8081"
 $env:ANTHROPIC_API_KEY = "dummy"
 claude</pre>
+    </div>
+  </div>
+</div>
+
+<!-- Tab View 4: Engine Compilation -->
+<div id="viewCompile" class="tab-view">
+  <!-- Environment Cards Grid -->
+  <div class="card" style="margin-bottom:10px">
+    <div style="font-weight:600;font-size:14px;color:#38bdf8;margin-bottom:8px">🔍 编译环境检测 (Environment Pre-flight)</div>
+    <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:10px" id="envCardsGrid">
+      <div class="env-card" id="envCudaCard">
+        <div class="env-title">CUDA Toolkit</div>
+        <div class="env-val" id="envCudaVal">检测中...</div>
+      </div>
+      <div class="env-card" id="envMsvcCard">
+        <div class="env-title">MSVC / VS2022</div>
+        <div class="env-val" id="envMsvcVal">检测中...</div>
+      </div>
+      <div class="env-card" id="envCcacheCard">
+        <div class="env-title">ccache 缓存</div>
+        <div class="env-val" id="envCcacheVal">检测中...</div>
+      </div>
+      <div class="env-card" id="envNinjaCard">
+        <div class="env-title">Ninja / MSBuild</div>
+        <div class="env-val" id="envNinjaVal">检测中...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Build Parameters Form -->
+  <div class="card" style="margin-bottom:10px">
+    <div style="font-weight:600;font-size:14px;color:#38bdf8;margin-bottom:8px">⚙️ 构建参数设置 (Build Settings)</div>
+    <div class="row" style="margin-bottom:8px">
+      <div class="col" style="flex:2">
+        <label>源码路径 (Source Directory)</label>
+        <div style="display:flex;gap:6px">
+          <input type="text" id="buildSourceDir" value="llama-source" placeholder="如 llama-source 或 llama.cpp-b9902">
+          <button class="btn-file" onclick="browseFile('buildSourceDir','dir')">📁</button>
+        </div>
+      </div>
+      <div class="col" style="flex:1">
+        <label>构建版本号 (Build Tag)</label>
+        <input type="text" id="buildNumber" value="b9902" placeholder="如 b9902 / b10229">
+      </div>
+    </div>
+    <div class="row" style="margin-bottom:10px">
+      <div class="col" style="flex:1">
+        <label>GPU 目标架构 (CUDA Arch)</label>
+        <select id="buildCudaArch">
+          <option value="120">sm_120 (RTX 5060 Ti / 50系 Blackwell 架构)</option>
+          <option value="89">sm_89 (RTX 4060/4070/4080/4090 40系 Ada)</option>
+          <option value="86">sm_86 (RTX 3060/3070/3080/3090 30系 Ampere)</option>
+          <option value="75">sm_75 (RTX 2060/2070/2080 20系 Turing)</option>
+        </select>
+      </div>
+      <div class="col" style="width:110px">
+        <label>编译线程数</label>
+        <input type="number" id="buildThreads" value="16" min="1" max="64">
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center">
+      <button class="b1" id="btnStartCompile" onclick="startCompileEngine()" style="flex:1;padding:8px;font-size:14px">🚀 一键开始极速编译引擎</button>
+      <button class="bd" id="btnCancelCompile" onclick="cancelCompileEngine()" disabled style="padding:8px 16px">⏹️ 终止编译</button>
+      <button class="bs" onclick="refreshBuildEnv()" style="padding:8px 12px" title="重新检测编译环境">🔄 刷新环境</button>
+    </div>
+  </div>
+
+  <!-- Real-Time Terminal Console -->
+  <div class="card" style="display:flex;flex-direction:column;flex:1;min-height:220px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <div style="font-weight:600;font-size:14px;color:#38bdf8">📟 实时编译控制台 (Build Terminal Output)</div>
+      <button class="bs" onclick="clearBuildTerminal()" style="padding:2px 8px;font-size:12px">🧹 清屏</button>
+    </div>
+    <div class="build-terminal" id="buildTerminal">
+      <div class="term-line info">等待开始编译... 点击上方“一键开始极速编译引擎”启动构建</div>
     </div>
   </div>
 </div>

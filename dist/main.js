@@ -20,6 +20,10 @@ function switchTab(tabName) {
     } else if (tabName === 'gateway') {
         $('tabBtnGateway').classList.add('active');
         $('viewGateway').classList.add('active');
+    } else if (tabName === 'compile') {
+        $('tabBtnCompile').classList.add('active');
+        $('viewCompile').classList.add('active');
+        refreshBuildEnv();
     }
 }
 
@@ -89,7 +93,11 @@ async function inspectModelPath() {
 
         var sizeGb = (info.file_size_bytes / (1024 * 1024 * 1024)).toFixed(2);
         $('ggufSize').textContent = sizeGb + ' GB';
-        $('ggufLayers').textContent = (info.block_count || '—') + ' 层';
+        if (info.has_mtp && info.block_count > 1) {
+            $('ggufLayers').textContent = (info.block_count - 1) + ' + 1 MTP 层 (共 ' + info.block_count + ' 层)';
+        } else {
+            $('ggufLayers').textContent = (info.block_count || '—') + ' 层';
+        }
         $('ggufMaxCtx').textContent = info.context_length ? (info.context_length >= 1024 ? (info.context_length / 1024) + 'k' : info.context_length) : '未知';
 
         var ctx = parseInt($('ctxSize').value, 10) || 8192;
@@ -798,7 +806,7 @@ function fitChatHeight() {
 
 // --- Init ---
 async function init() {
-    // 启动时根据屏幕真实可用高度按 82% 动态计算窗口高度（如 2560x1440 屏幕下为 1180px），并居中定位
+    // 启动时根据屏幕真实可用高度按 90% 动态计算窗口高度（如 2560x1440 屏幕下为 ~1296px），并居中定位
     if (window.__TAURI__ && window.__TAURI__.window) {
         try {
             var W = window.__TAURI__.window;
@@ -806,7 +814,7 @@ async function init() {
             var current = await win.outerSize();
             var scale = await win.scaleFactor();
             var w = Math.round(current.width / scale);
-            var h = Math.max(720, Math.round(window.screen.availHeight * 0.82));
+            var h = Math.max(760, Math.round(window.screen.availHeight * 0.90));
             var x = Math.round((window.screen.availWidth - w) / 2);
             var y = Math.max(0, Math.round((window.screen.availHeight - h) / 2));
             await win.setSize(new W.LogicalSize(w, h));
@@ -866,6 +874,146 @@ async function init() {
     });
 
     window.onresize = fitChatHeight;
+}
+
+// --- Engine Compilation Module ---
+async function refreshBuildEnv() {
+    if (!tauriInvoke) return;
+    try {
+        var env = await tauriInvoke('check_build_env');
+        
+        var cudaCard = $('envCudaCard');
+        if (env.cuda_installed) {
+            cudaCard.className = 'env-card ok';
+            $('envCudaVal').textContent = env.cuda_version;
+        } else {
+            cudaCard.className = 'env-card err';
+            $('envCudaVal').textContent = '未找到 CUDA';
+        }
+
+        var msvcCard = $('envMsvcCard');
+        if (env.msvc_installed) {
+            msvcCard.className = 'env-card ok';
+            $('envMsvcVal').textContent = 'VS2022 / MSVC 就绪';
+        } else {
+            msvcCard.className = 'env-card warn';
+            $('envMsvcVal').textContent = '未找到 VS 环境';
+        }
+
+        var ccacheCard = $('envCcacheCard');
+        if (env.ccache_installed) {
+            ccacheCard.className = 'env-card ok';
+            $('envCcacheVal').textContent = '已就绪 (高速缓存)';
+        } else {
+            ccacheCard.className = 'env-card info';
+            $('envCcacheVal').textContent = '未安装 (常规编译)';
+        }
+
+        var ninjaCard = $('envNinjaCard');
+        if (env.ninja_installed) {
+            ninjaCard.className = 'env-card ok';
+            $('envNinjaVal').textContent = 'Ninja 构建就绪';
+        } else {
+            ninjaCard.className = 'env-card ok';
+            $('envNinjaVal').textContent = 'MSBuild 原生构建';
+        }
+    } catch(e) {
+        console.error('刷新环境失败:', e);
+    }
+}
+
+async function startCompileEngine() {
+    if (!tauriInvoke) {
+        showToast('Tauri IPC 接口未就绪');
+        return;
+    }
+
+    var sourceDir = $('buildSourceDir').value.trim();
+    var buildNumber = $('buildNumber').value.trim();
+    var cudaArch = $('buildCudaArch').value;
+    var threads = parseInt($('buildThreads').value, 10) || 16;
+
+    $('btnStartCompile').disabled = true;
+    $('btnCancelCompile').disabled = false;
+
+    clearBuildTerminal();
+    appendTermLine('🚀 正在初始化极速编译引擎任务...', 'cyan');
+    appendTermLine('源码目录: ' + (sourceDir || 'llama-source') + ' | 版本号: ' + (buildNumber || 'b9902') + ' | CUDA Arch: sm_' + cudaArch + ' | 线程数: ' + threads, 'info');
+
+    try {
+        var msg = await tauriInvoke('start_compile_engine', {
+            sourceDir: sourceDir,
+            buildNumber: buildNumber,
+            cudaArch: cudaArch,
+            threads: threads
+        });
+        appendTermLine(msg, 'green');
+    } catch(e) {
+        appendTermLine('❌ 启动编译失败: ' + e, 'err');
+        $('btnStartCompile').disabled = false;
+        $('btnCancelCompile').disabled = true;
+    }
+}
+
+async function cancelCompileEngine() {
+    if (!tauriInvoke) return;
+    try {
+        var msg = await tauriInvoke('cancel_compile_engine');
+        appendTermLine('⏹️ ' + msg, 'warn');
+        $('btnStartCompile').disabled = false;
+        $('btnCancelCompile').disabled = true;
+    } catch(e) {
+        appendTermLine('取消编译出错: ' + e, 'err');
+    }
+}
+
+function clearBuildTerminal() {
+    $('buildTerminal').innerHTML = '';
+}
+
+function appendTermLine(txt, cls) {
+    var term = $('buildTerminal');
+    if (!term) return;
+    var div = document.createElement('div');
+    div.className = 'term-line ' + (cls || '');
+    
+    if (!cls) {
+        if (txt.indexOf('0/5') >= 0 || txt.indexOf('1/5') >= 0 || txt.indexOf('2/5') >= 0 || txt.indexOf('3/5') >= 0 || txt.indexOf('4/5') >= 0 || txt.indexOf('5/5') >= 0) {
+            div.className = 'term-line cyan';
+        } else if (txt.indexOf('恭喜') >= 0 || txt.indexOf('成功') >= 0 || txt.indexOf('100%') >= 0) {
+            div.className = 'term-line green';
+        } else if (txt.indexOf('警告') >= 0 || txt.indexOf('WARNING') >= 0 || txt.indexOf('[STDERR]') >= 0) {
+            div.className = 'term-line warn';
+        } else if (txt.indexOf('失败') >= 0 || txt.indexOf('错误') >= 0 || txt.indexOf('Error') >= 0 || txt.indexOf('ERROR') >= 0) {
+            div.className = 'term-line err';
+        } else {
+            div.className = 'term-line info';
+        }
+    }
+    div.textContent = txt;
+    term.appendChild(div);
+    term.scrollTop = term.scrollHeight;
+}
+
+if (window.__TAURI__ && window.__TAURI__.event) {
+    window.__TAURI__.event.listen('compile-log', function(ev) {
+        appendTermLine(ev.payload);
+    });
+
+    window.__TAURI__.event.listen('compile-finished', function(ev) {
+        $('btnStartCompile').disabled = false;
+        $('btnCancelCompile').disabled = true;
+
+        if (ev.payload && ev.payload.success) {
+            appendTermLine('========================================', 'green');
+            appendTermLine('🎉 编译 100% 成功！全新的 llama-server.exe 内核已生成！', 'green');
+            appendTermLine('========================================', 'green');
+            showToast('🎉 编译成功！新内核已就绪');
+        } else {
+            appendTermLine('❌ 编译未能成功完成 (退出码: ' + (ev.payload ? ev.payload.code : '未知') + ')', 'err');
+            showToast('编译未完成，请查看控制台日志');
+        }
+    });
 }
 
 init();

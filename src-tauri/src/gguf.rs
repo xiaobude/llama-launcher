@@ -10,6 +10,7 @@ pub struct GgufInfo {
     pub architecture: String,
     pub model_name: String,
     pub block_count: u32,
+    pub has_mtp: bool,
     pub context_length: u32,
     pub embedding_length: u32,
     pub head_count: u32,
@@ -255,22 +256,26 @@ pub fn inspect_gguf_file<P: AsRef<Path>>(path: P) -> std::io::Result<GgufInfo> {
         }
     }
 
+    let path_upper = path.as_ref().to_string_lossy().to_uppercase();
+    if path_upper.contains("MTP") || info.model_name.to_uppercase().contains("MTP") {
+        info.has_mtp = true;
+    }
+
     if let Some(code) = file_type_code {
         info.quantization_type = parse_file_type(code).to_string();
     } else {
         // Infer from filename if file_type code was not in metadata
-        let path_str = path.as_ref().to_string_lossy().to_uppercase();
-        if path_str.contains("Q4_K_M") {
+        if path_upper.contains("Q4_K_M") {
             info.quantization_type = "Q4_K_M".to_string();
-        } else if path_str.contains("IQ4_XS") {
+        } else if path_upper.contains("IQ4_XS") {
             info.quantization_type = "IQ4_XS".to_string();
-        } else if path_str.contains("IQ4_NL") {
+        } else if path_upper.contains("IQ4_NL") {
             info.quantization_type = "IQ4_NL".to_string();
-        } else if path_str.contains("Q8_0") {
+        } else if path_upper.contains("Q8_0") {
             info.quantization_type = "Q8_0".to_string();
-        } else if path_str.contains("Q5_K_M") {
+        } else if path_upper.contains("Q5_K_M") {
             info.quantization_type = "Q5_K_M".to_string();
-        } else if path_str.contains("F16") || path_str.contains("BF16") {
+        } else if path_upper.contains("F16") || path_upper.contains("BF16") {
             info.quantization_type = "F16".to_string();
         } else {
             info.quantization_type = "Quantized".to_string();

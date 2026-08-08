@@ -994,3 +994,103 @@ input:focus, select:focus, textarea:focus {
     box-shadow: 0 6px 16px rgba(16, 185, 129, 0.35);
     transform: translateY(-1px);
 }
+
+/* --- Engine Builder & Environment Cards --- */
+.env-card {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 8px 12px;
+    transition: all 0.2s ease;
+}
+
+.env-card:hover {
+    border-color: rgba(56, 189, 248, 0.3);
+    background: rgba(30, 41, 59, 0.7);
+}
+
+.env-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #64748b;
+    margin-bottom: 4px;
+    font-weight: 600;
+}
+
+.env-val {
+    font-size: 13px;
+    font-weight: 600;
+    color: #e2e8f0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.env-card.ok .env-val {
+    color: #4ade80;
+}
+
+.env-card.warn .env-val {
+    color: #f59e0b;
+}
+
+.env-card.err .env-val {
+    color: #f87171;
+}
+
+/* --- Real-Time Build Terminal Console --- */
+.build-terminal {
+    background: #090d16;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-family: 'Fira Code', 'Consolas', 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #34d399;
+    flex: 1;
+    min-height: 180px;
+    max-height: 320px;
+    overflow-y: auto;
+    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.6);
+    user-select: text;
+}
+
+.build-terminal::-webkit-scrollbar {
+    width: 6px;
+}
+
+.build-terminal::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 3px;
+}
+
+.term-line {
+    word-break: break-all;
+    white-space: pre-wrap;
+    margin-bottom: 2px;
+}
+
+.term-line.info {
+    color: #94a3b8;
+}
+
+.term-line.cyan {
+    color: #38bdf8;
+    font-weight: 600;
+}
+
+.term-line.green {
+    color: #4ade80;
+    font-weight: 600;
+}
+
+.term-line.warn {
+    color: #fbbf24;
+}
+
+.term-line.err {
+    color: #f87171;
+    font-weight: 600;
+}

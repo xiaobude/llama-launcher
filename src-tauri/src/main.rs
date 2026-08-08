@@ -12,8 +12,9 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
+use serde::Serialize;
 use serde_json::Value;
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -22,6 +23,7 @@ const CREATE_NEW_CONSOLE: u32 = 0x00000010;
 struct ServerPid(Mutex<Option<u32>>);
 struct ProxyHandle(Mutex<Option<tokio::task::JoinHandle<()>>>);
 struct ServerPort(Mutex<Option<u16>>);
+struct CompileChild(Mutex<Option<u32>>);
 
 fn get_log_dir(_app: &tauri::AppHandle) -> PathBuf {
     let path = std::env::current_exe()
@@ -414,12 +416,194 @@ async fn estimate_vram_budget(
     Ok(estimate_vram(&info, ctx_size, &cache_type_k, &cache_type_v, total_vram))
 }
 
+#[derive(Serialize)]
+struct BuildEnvStatus {
+    cuda_installed: bool,
+    cuda_version: String,
+    nvcc_path: String,
+    msvc_installed: bool,
+    ccache_installed: bool,
+    ninja_installed: bool,
+    git_installed: bool,
+    cmake_installed: bool,
+}
+
+#[tauri::command]
+async fn check_build_env() -> Result<BuildEnvStatus, String> {
+    let cuda_128 = std::path::Path::new(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\bin\nvcc.exe");
+    let cuda_132 = std::path::Path::new(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2\bin\nvcc.exe");
+    let (cuda_installed, cuda_version, nvcc_path) = if cuda_128.exists() {
+        (true, "v12.8 (推荐 sm_120)".to_string(), cuda_128.to_string_lossy().to_string())
+    } else if cuda_132.exists() {
+        (true, "v13.2".to_string(), cuda_132.to_string_lossy().to_string())
+    } else {
+        (false, "未检测到 CUDA Toolkit".to_string(), "".to_string())
+    };
+
+    let msvc_installed = Command::new("vswhere.exe")
+        .args(["-products", "*", "-latest"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map(|o| o.status.success() && !o.stdout.is_empty())
+        .unwrap_or(false);
+
+    let ccache_installed = Command::new("ccache.exe")
+        .arg("--version")
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    let ninja_installed = Command::new("ninja.exe")
+        .arg("--version")
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    let git_installed = Command::new("git.exe")
+        .arg("--version")
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    let cmake_installed = Command::new("cmake.exe")
+        .arg("--version")
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    Ok(BuildEnvStatus {
+        cuda_installed,
+        cuda_version,
+        nvcc_path,
+        msvc_installed,
+        ccache_installed,
+        ninja_installed,
+        git_installed,
+        cmake_installed,
+    })
+}
+
+#[tauri::command]
+async fn start_compile_engine(
+    app: tauri::AppHandle,
+    state: State<'_, CompileChild>,
+    source_dir: String,
+    build_number: String,
+    cuda_arch: String,
+    threads: u32,
+) -> Result<String, String> {
+    let mut guard = state.0.lock().unwrap();
+    if let Some(pid) = *guard {
+        kill_process(pid);
+        *guard = None;
+    }
+
+    let root_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let script_name = "build_llama-server.ps1";
+    let script_path = if root_dir.join(script_name).exists() {
+        root_dir.join(script_name)
+    } else if std::path::Path::new(script_name).exists() {
+        PathBuf::from(script_name)
+    } else if root_dir.join("build_local_cuda_v12.8.ps1").exists() {
+        root_dir.join("build_local_cuda_v12.8.ps1")
+    } else {
+        PathBuf::from("build_local_cuda_v12.8.ps1")
+    };
+
+    let mut cmd = Command::new("powershell.exe");
+    cmd.args([
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        &script_path.to_string_lossy(),
+    ]);
+
+    if !source_dir.trim().is_empty() {
+        cmd.args(["-SourceDir", source_dir.trim()]);
+    }
+    if !build_number.trim().is_empty() {
+        cmd.args(["-BuildNumber", build_number.trim()]);
+    }
+    if !cuda_arch.trim().is_empty() {
+        cmd.args(["-CudaArch", cuda_arch.trim()]);
+    }
+    if threads > 0 {
+        cmd.args(["-Threads", &threads.to_string()]);
+    }
+
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+
+    let mut child = cmd.spawn().map_err(|e| format!("启动编译脚本失败: {}", e))?;
+    let pid = child.id();
+    *guard = Some(pid);
+    drop(guard);
+
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+
+    let app_handle = app.clone();
+
+    std::thread::spawn(move || {
+        use std::io::{BufRead, BufReader};
+
+        if let Some(out) = stdout {
+            let reader = BufReader::new(out);
+            for line in reader.lines().flatten() {
+                let _ = app_handle.emit("compile-log", line);
+            }
+        }
+
+        if let Some(err) = stderr {
+            let reader = BufReader::new(err);
+            for line in reader.lines().flatten() {
+                let _ = app_handle.emit("compile-log", format!("[STDERR] {}", line));
+            }
+        }
+
+        let exit_code = match child.wait() {
+            Ok(status) => status.code().unwrap_or(1),
+            Err(_) => 1,
+        };
+
+        let _ = app_handle.emit("compile-finished", serde_json::json!({
+            "success": exit_code == 0,
+            "code": exit_code
+        }));
+    });
+
+    Ok(format!("编译任务已启动 (PID: {})", pid))
+}
+
+#[tauri::command]
+async fn cancel_compile_engine(state: State<'_, CompileChild>) -> Result<String, String> {
+    let mut guard = state.0.lock().unwrap();
+    if let Some(pid) = *guard {
+        kill_process(pid);
+        *guard = None;
+        Ok("已发送终止信号".to_string())
+    } else {
+        Ok("未在运行编译任务".to_string())
+    }
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(ServerPid(Mutex::new(None)))
         .manage(ProxyHandle(Mutex::new(None)))
         .manage(ServerPort(Mutex::new(None)))
+        .manage(CompileChild(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             start_server,
             stop_server,
@@ -431,6 +615,9 @@ fn main() {
             get_bundled_server_path,
             inspect_gguf,
             estimate_vram_budget,
+            check_build_env,
+            start_compile_engine,
+            cancel_compile_engine,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
