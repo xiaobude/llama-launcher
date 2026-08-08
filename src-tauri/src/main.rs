@@ -523,6 +523,8 @@ async fn check_build_env() -> Result<BuildEnvStatus, String> {
     })
 }
 
+const EMBEDDED_BUILD_SCRIPT: &str = include_str!("../../build_llama-server.ps1");
+
 #[tauri::command]
 async fn start_compile_engine(
     app: tauri::AppHandle,
@@ -548,12 +550,12 @@ async fn start_compile_engine(
     let script_name = "build_llama-server.ps1";
     let script_path = if root_dir.join(script_name).exists() {
         root_dir.join(script_name)
-    } else if std::path::Path::new(script_name).exists() {
-        PathBuf::from(script_name)
-    } else if root_dir.join("build_local_cuda_v12.8.ps1").exists() {
-        root_dir.join("build_local_cuda_v12.8.ps1")
     } else {
-        PathBuf::from("build_local_cuda_v12.8.ps1")
+        let temp_script = get_log_dir(&app).join(script_name);
+        let mut bytes = vec![0xEF, 0xBB, 0xBF];
+        bytes.extend_from_slice(EMBEDDED_BUILD_SCRIPT.as_bytes());
+        let _ = fs::write(&temp_script, bytes);
+        temp_script
     };
 
     let mut cmd = Command::new("powershell.exe");

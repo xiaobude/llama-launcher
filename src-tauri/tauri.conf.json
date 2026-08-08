@@ -29,6 +29,6 @@
       "icons/icon.ico",
       "icons/icon.png"
     ],
-    "resources": ["resources/config.json"]
+    "resources": ["resources/config.json", "../build_llama-server.ps1"]
   }
 }
