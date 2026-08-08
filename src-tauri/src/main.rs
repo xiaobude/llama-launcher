@@ -552,8 +552,9 @@ async fn start_compile_engine(
         root_dir.join(script_name)
     } else {
         let temp_script = get_log_dir(&app).join(script_name);
+        let clean_script = EMBEDDED_BUILD_SCRIPT.trim_start_matches('\u{feff}');
         let mut bytes = vec![0xEF, 0xBB, 0xBF];
-        bytes.extend_from_slice(EMBEDDED_BUILD_SCRIPT.as_bytes());
+        bytes.extend_from_slice(clean_script.as_bytes());
         let _ = fs::write(&temp_script, bytes);
         temp_script
     };
