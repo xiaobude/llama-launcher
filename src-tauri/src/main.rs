@@ -599,19 +599,31 @@ async fn start_compile_engine(
     let app_handle = app.clone();
 
     std::thread::spawn(move || {
-        use std::io::{BufRead, BufReader};
+        use std::io::BufRead;
 
         if let Some(out) = stdout {
-            let reader = BufReader::new(out);
-            for line in reader.lines().flatten() {
-                let _ = app_handle.emit("compile-log", line);
+            let mut reader = std::io::BufReader::new(out);
+            let mut buf = Vec::new();
+            while let Ok(n) = reader.read_until(b'\n', &mut buf) {
+                if n == 0 { break; }
+                let line = String::from_utf8_lossy(&buf).trim_end().to_string();
+                if !line.is_empty() {
+                    let _ = app_handle.emit("compile-log", line);
+                }
+                buf.clear();
             }
         }
 
         if let Some(err) = stderr {
-            let reader = BufReader::new(err);
-            for line in reader.lines().flatten() {
-                let _ = app_handle.emit("compile-log", format!("[STDERR] {}", line));
+            let mut reader = std::io::BufReader::new(err);
+            let mut buf = Vec::new();
+            while let Ok(n) = reader.read_until(b'\n', &mut buf) {
+                if n == 0 { break; }
+                let line = String::from_utf8_lossy(&buf).trim_end().to_string();
+                if !line.is_empty() {
+                    let _ = app_handle.emit("compile-log", format!("[STDERR] {}", line));
+                }
+                buf.clear();
             }
         }
 

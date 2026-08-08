@@ -1,4 +1,4 @@
-# build_llama-server.ps1 - LLaMA Launcher 本地极速编译脚本
+﻿# build_llama-server.ps1 - LLaMA Launcher 本地极速编译脚本
 param(
     [string]$SourceDir   = "llama-source",
     [string]$BuildNumber = "",
