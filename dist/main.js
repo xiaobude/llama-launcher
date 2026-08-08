@@ -44,6 +44,7 @@ async function browseFile(tid, type) {
     var filterName = '', extension = '';
     if (type === 'exe') { filterName = 'EXE程序'; extension = 'exe'; }
     else if (type === 'gguf') { filterName = 'GGUF模型'; extension = 'gguf'; }
+    else if (type === 'dir') { filterName = '文件夹'; extension = 'dir'; }
 
     try {
         var file = await tauriInvoke('browse_file', { filterName: filterName, extension: extension });

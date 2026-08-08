@@ -372,7 +372,7 @@ async fn open_log(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 async fn browse_file(app: tauri::AppHandle, filter_name: String, extension: String) -> Result<String, String> {
-    if extension == "dir" || filter_name == "dir" {
+    if extension == "dir" || filter_name == "dir" || filter_name == "文件夹" {
         let folder = app.dialog().file().blocking_pick_folder();
         match folder {
             Some(p) => Ok(p.to_string()),
