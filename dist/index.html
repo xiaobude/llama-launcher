@@ -267,18 +267,26 @@ claude</pre>
     <div style="font-weight:600;font-size:14px;color:#38bdf8;margin-bottom:8px">⚙️ 构建参数设置 (Build Settings)</div>
     <div class="row" style="margin-bottom:8px">
       <div class="col" style="flex:2">
-        <label>源码路径 (Source Directory)</label>
+        <label>源码路径 (可选择任意文件夹，如 llama.cpp-b10326)</label>
         <div style="display:flex;gap:6px">
-          <input type="text" id="buildSourceDir" value="llama-source" placeholder="如 llama-source 或 llama.cpp-b9902">
-          <button class="btn-file" onclick="browseFile('buildSourceDir','dir')">📁</button>
+          <input type="text" id="buildSourceDir" value="llama-source" placeholder="选择或输入源码文件夹路径">
+          <button class="btn-file" onclick="browseFile('buildSourceDir','dir')" style="white-space:nowrap;padding:0 8px">📁 浏览目录</button>
         </div>
       </div>
       <div class="col" style="flex:1">
         <label>构建版本号 (Build Tag)</label>
-        <input type="text" id="buildNumber" value="b9902" placeholder="如 b9902 / b10229">
+        <input type="text" id="buildNumber" placeholder="留空则自动从源码解析 (如 b10326)">
       </div>
     </div>
-    <div class="row" style="margin-bottom:10px">
+    <div class="row" style="margin-bottom:8px">
+      <div class="col" style="flex:1">
+        <label>CUDA Toolkit 版本</label>
+        <select id="buildCudaVer">
+          <option value="12.8">CUDA 12.8 Toolkit (推荐 Blackwell/RTX 50系)</option>
+          <option value="13.2">CUDA 13.2 Toolkit (最新通用版本)</option>
+          <option value="default">系统默认 CUDA_PATH</option>
+        </select>
+      </div>
       <div class="col" style="flex:1">
         <label>GPU 目标架构 (CUDA Arch)</label>
         <select id="buildCudaArch">
@@ -286,6 +294,17 @@ claude</pre>
           <option value="89">sm_89 (RTX 4060/4070/4080/4090 40系 Ada)</option>
           <option value="86">sm_86 (RTX 3060/3070/3080/3090 30系 Ampere)</option>
           <option value="75">sm_75 (RTX 2060/2070/2080 20系 Turing)</option>
+        </select>
+      </div>
+    </div>
+    <div class="row" style="margin-bottom:10px">
+      <div class="col" style="flex:2">
+        <label>CPU 指令集架构 (SIMD Acceleration)</label>
+        <select id="buildCpuArch">
+          <option value="avx2">AVX2 + FMA + F16C (推荐，Intel 10-14代 / AMD Ryzen)</option>
+          <option value="avx512">AVX-512 (极致浮点，Intel 11/12代 / Xeon / AMD Zen4/5)</option>
+          <option value="avx">AVX (旧款 CPU 兼容基础加速)</option>
+          <option value="generic">Generic (通用 No-AVX 指令集)</option>
         </select>
       </div>
       <div class="col" style="width:110px">

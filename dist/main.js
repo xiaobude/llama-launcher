@@ -930,7 +930,9 @@ async function startCompileEngine() {
 
     var sourceDir = $('buildSourceDir').value.trim();
     var buildNumber = $('buildNumber').value.trim();
+    var cudaVer = $('buildCudaVer').value;
     var cudaArch = $('buildCudaArch').value;
+    var cpuArch = $('buildCpuArch').value;
     var threads = parseInt($('buildThreads').value, 10) || 16;
 
     $('btnStartCompile').disabled = true;
@@ -938,13 +940,15 @@ async function startCompileEngine() {
 
     clearBuildTerminal();
     appendTermLine('🚀 正在初始化极速编译引擎任务...', 'cyan');
-    appendTermLine('源码目录: ' + (sourceDir || 'llama-source') + ' | 版本号: ' + (buildNumber || 'b9902') + ' | CUDA Arch: sm_' + cudaArch + ' | 线程数: ' + threads, 'info');
+    appendTermLine('源码目录: ' + (sourceDir || 'llama-source') + ' | CUDA: ' + cudaVer + ' | CUDA Arch: sm_' + cudaArch + ' | CPU Arch: ' + cpuArch + ' | 线程数: ' + threads, 'info');
 
     try {
         var msg = await tauriInvoke('start_compile_engine', {
             sourceDir: sourceDir,
             buildNumber: buildNumber,
+            cudaVer: cudaVer,
             cudaArch: cudaArch,
+            cpuArch: cpuArch,
             threads: threads
         });
         appendTermLine(msg, 'green');

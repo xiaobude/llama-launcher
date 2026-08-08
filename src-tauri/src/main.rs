@@ -372,14 +372,22 @@ async fn open_log(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 async fn browse_file(app: tauri::AppHandle, filter_name: String, extension: String) -> Result<String, String> {
-    let mut builder = app.dialog().file();
-    if !extension.is_empty() {
-        builder = builder.add_filter(&filter_name, &[&extension]);
-    }
-    let file_path = builder.blocking_pick_file();
-    match file_path {
-        Some(p) => Ok(p.to_string()),
-        None => Ok("".to_string()),
+    if extension == "dir" || filter_name == "dir" {
+        let folder = app.dialog().file().blocking_pick_folder();
+        match folder {
+            Some(p) => Ok(p.to_string()),
+            None => Ok("".to_string()),
+        }
+    } else {
+        let mut builder = app.dialog().file();
+        if !extension.is_empty() {
+            builder = builder.add_filter(&filter_name, &[&extension]);
+        }
+        let file_path = builder.blocking_pick_file();
+        match file_path {
+            Some(p) => Ok(p.to_string()),
+            None => Ok("".to_string()),
+        }
     }
 }
 
@@ -432,20 +440,48 @@ struct BuildEnvStatus {
 async fn check_build_env() -> Result<BuildEnvStatus, String> {
     let cuda_128 = std::path::Path::new(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\bin\nvcc.exe");
     let cuda_132 = std::path::Path::new(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2\bin\nvcc.exe");
-    let (cuda_installed, cuda_version, nvcc_path) = if cuda_128.exists() {
-        (true, "v12.8 (推荐 sm_120)".to_string(), cuda_128.to_string_lossy().to_string())
+    let (cuda_installed, cuda_version, nvcc_path) = if cuda_128.exists() && cuda_132.exists() {
+        (true, "CUDA 12.8 与 13.2 双版本就绪".to_string(), cuda_128.to_string_lossy().to_string())
+    } else if cuda_128.exists() {
+        (true, "v12.8 就绪 (推荐 sm_120)".to_string(), cuda_128.to_string_lossy().to_string())
     } else if cuda_132.exists() {
-        (true, "v13.2".to_string(), cuda_132.to_string_lossy().to_string())
+        (true, "v13.2 就绪".to_string(), cuda_132.to_string_lossy().to_string())
     } else {
         (false, "未检测到 CUDA Toolkit".to_string(), "".to_string())
     };
 
-    let msvc_installed = Command::new("vswhere.exe")
-        .args(["-products", "*", "-latest"])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .map(|o| o.status.success() && !o.stdout.is_empty())
-        .unwrap_or(false);
+    let vswhere = std::path::Path::new(r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe");
+    let mut msvc_installed = if vswhere.exists() {
+        Command::new(vswhere)
+            .args(["-products", "*", "-latest", "-property", "installationPath"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .map(|o| o.status.success() && !o.stdout.is_empty())
+            .unwrap_or(false)
+    } else {
+        Command::new("vswhere.exe")
+            .args(["-products", "*", "-latest"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .map(|o| o.status.success() && !o.stdout.is_empty())
+            .unwrap_or(false)
+    };
+
+    if !msvc_installed {
+        let vs_paths = [
+            r"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat",
+            r"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat",
+            r"C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat",
+            r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat",
+            r"C:\Program Files (x86)\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat",
+        ];
+        for p in vs_paths {
+            if std::path::Path::new(p).exists() {
+                msvc_installed = true;
+                break;
+            }
+        }
+    }
 
     let ccache_installed = Command::new("ccache.exe")
         .arg("--version")
@@ -493,7 +529,9 @@ async fn start_compile_engine(
     state: State<'_, CompileChild>,
     source_dir: String,
     build_number: String,
+    cuda_ver: String,
     cuda_arch: String,
+    cpu_arch: String,
     threads: u32,
 ) -> Result<String, String> {
     let mut guard = state.0.lock().unwrap();
@@ -533,8 +571,14 @@ async fn start_compile_engine(
     if !build_number.trim().is_empty() {
         cmd.args(["-BuildNumber", build_number.trim()]);
     }
+    if !cuda_ver.trim().is_empty() {
+        cmd.args(["-CudaVersion", cuda_ver.trim()]);
+    }
     if !cuda_arch.trim().is_empty() {
         cmd.args(["-CudaArch", cuda_arch.trim()]);
+    }
+    if !cpu_arch.trim().is_empty() {
+        cmd.args(["-CpuArch", cpu_arch.trim()]);
     }
     if threads > 0 {
         cmd.args(["-Threads", &threads.to_string()]);
