@@ -242,10 +242,17 @@ Write-Host "3/5 正在配置 CMake 参数 (CUDA sm_$CudaArch / CPU $CpuArch)..."
 
 Push-Location $buildDir
 try {
+    $oldEap = $ErrorActionPreference
     $ErrorActionPreference = "SilentlyContinue"
-    & cmake.exe @cmakeArgs
+    $cmakeOut = & cmake.exe @cmakeArgs 2>&1
     $ErrorActionPreference = $oldEap
-    if ($LASTEXITCODE -ne 0) { throw "CMake 配置失败，退出码 $LASTEXITCODE" }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "==========================================" -ForegroundColor Red
+        Write-Host "CMake 配置失败！详细日志如下：" -ForegroundColor Red
+        Write-Host $cmakeOut
+        Write-Host "==========================================" -ForegroundColor Red
+        throw "CMake 配置失败，退出码 $LASTEXITCODE"
+    }
 } finally {
     Pop-Location
 }
@@ -257,10 +264,17 @@ Write-Host "4/5 正在进行多核极速编译 ($Threads 线程)..." -Foreground
 
 Push-Location $buildDir
 try {
+    $oldEap = $ErrorActionPreference
     $ErrorActionPreference = "SilentlyContinue"
-    & cmake.exe --build . --config Release --target llama-server --parallel $Threads -- /v:q /nologo
+    $buildOut = & cmake.exe --build . --config Release --target llama-server --parallel $Threads -- /v:q /nologo 2>&1
     $ErrorActionPreference = $oldEap
-    if ($LASTEXITCODE -ne 0) { throw "编译失败，退出码 $LASTEXITCODE" }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "==========================================" -ForegroundColor Red
+        Write-Host "编译失败！详细日志如下：" -ForegroundColor Red
+        Write-Host $buildOut
+        Write-Host "==========================================" -ForegroundColor Red
+        throw "编译失败，退出码 $LASTEXITCODE"
+    }
     Write-Host "        编译 100% 完成！" -ForegroundColor Cyan
 } finally {
     Pop-Location
