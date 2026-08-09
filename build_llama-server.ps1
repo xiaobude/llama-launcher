@@ -274,18 +274,26 @@ if (-not $exe) {
     throw "未能在 $buildDir 中找到有效编译产物 llama-server.exe"
 }
 
-$scriptRoot = (Get-Item $PSScriptRoot).FullName
-$destExe = Join-Path $scriptRoot "llama-server.exe"
+$appRoot = (Get-Item $PSScriptRoot).FullName
+if ((Get-Item $appRoot).Name -eq "logs") {
+    $parentDir = (Get-Item $appRoot).Parent.FullName
+    $appRoot = $parentDir
+}
+
+$destExe = Join-Path $appRoot "llama-server.exe"
 Copy-Item $exe.FullName -Destination $destExe -Force
 
-$resDir = Join-Path $scriptRoot "src-tauri\resources"
+$versionedExe = Join-Path $appRoot "llama-server-b${tagNum}-${commitHash}.exe"
+Copy-Item $exe.FullName -Destination $versionedExe -Force
+
+$resDir = Join-Path $appRoot "src-tauri\resources"
 if (Test-Path $resDir) {
     Copy-Item $exe.FullName -Destination (Join-Path $resDir "llama-server.exe") -Force
 }
 
 $cublasDll = Get-ChildItem -Path "$env:CUDA_PATH\bin" -Filter "cublas64_*.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($cublasDll) {
-    Copy-Item $cublasDll.FullName -Destination (Join-Path $scriptRoot $cublasDll.Name) -Force
+    Copy-Item $cublasDll.FullName -Destination (Join-Path $appRoot $cublasDll.Name) -Force
     if (Test-Path $resDir) {
         Copy-Item $cublasDll.FullName -Destination (Join-Path $resDir $cublasDll.Name) -Force
     }
