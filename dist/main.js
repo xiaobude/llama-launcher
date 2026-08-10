@@ -304,7 +304,7 @@ function buildCmd() {
     if (f.alias) L.push('--alias', f.alias);
     L.push('--port', f.port);
     if (f.host) L.push('--host', f.host);
-    if (f.cudaDevice !== '' && f.cudaDevice !== undefined && f.cudaDevice !== null) L.push('-mg', f.cudaDevice);
+    if (f.cudaDevice !== '' && f.cudaDevice !== undefined && f.cudaDevice !== null) L.push('--main-gpu', f.cudaDevice);
     L.push('--n-gpu-layers', f.gpuLayers);
     L.push('-c', f.ctxSize);
     if (f.batchSize) L.push('-b', f.batchSize);
