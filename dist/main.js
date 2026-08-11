@@ -50,7 +50,7 @@ async function browseFile(tid, type) {
         var file = await tauriInvoke('browse_file', { filterName: filterName, extension: extension });
         if (file) {
             $(tid).value = file;
-            if (tid === 'modelPath') onModelPathChange();
+            if (tid === 'modelPath' || tid === 'draftModelPath') onModelPathChange();
             updatePreview();
         }
     } catch (e) {
@@ -62,11 +62,14 @@ var lastRecommendedNgl = null;
 
 function onModelPathChange() {
     var path = $('modelPath').value.toLowerCase();
+    var draftPath = $('draftModelPath') ? $('draftModelPath').value.toLowerCase() : '';
     var spec = $('specType');
-    if (path.indexOf('mtp') !== -1) {
+    if (draftPath.indexOf('dflash') !== -1 || path.indexOf('dflash') !== -1) {
+        if (spec.value === 'none') spec.value = 'draft-dflash';
+    } else if (path.indexOf('mtp') !== -1) {
         if (spec.value === 'none') spec.value = 'draft-mtp';
     } else {
-        if (spec.value === 'draft-mtp') spec.value = 'none';
+        if (spec.value === 'draft-mtp' || spec.value === 'draft-dflash') spec.value = 'none';
     }
     updateSpecVis();
     updatePreview();
@@ -865,6 +868,12 @@ async function init() {
             el.addEventListener('change', inspectModelPath);
         }
     });
+
+    var draftEl = $('draftModelPath');
+    if (draftEl) {
+        draftEl.addEventListener('input', onModelPathChange);
+        draftEl.addEventListener('change', onModelPathChange);
+    }
 
     document.querySelectorAll('input,select,textarea').forEach(function(el) {
         el.addEventListener('input', updatePreview);

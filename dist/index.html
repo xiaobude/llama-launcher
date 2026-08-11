@@ -148,8 +148,9 @@
     <div class="fr" style="margin-top:9px">
       <div class="col" style="width:200px"><label>投机解码 (内置MTP专用)</label>
         <select id="specType" onchange="updateSpecVis();updatePreview()">
-          <option value="none">关闭 (或使用外部小模型)</option>
-          <option value="draft-mtp">draft-mtp (仅限MTP模型)</option>
+          <option value="none">关闭 (或使用常规外部小模型)</option>
+          <option value="draft-mtp">draft-mtp (MTP 自带草稿层)</option>
+          <option value="draft-dflash">draft-dflash (DFlash 块扩散侧车)</option>
           <option value="nfnet">nfnet</option>
           <option value="ptn">ptn</option>
         </select>
