@@ -440,12 +440,17 @@ struct BuildEnvStatus {
 async fn check_build_env() -> Result<BuildEnvStatus, String> {
     let cuda_128 = std::path::Path::new(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\bin\nvcc.exe");
     let cuda_132 = std::path::Path::new(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2\bin\nvcc.exe");
-    let (cuda_installed, cuda_version, nvcc_path) = if cuda_128.exists() && cuda_132.exists() {
-        (true, "CUDA 12.8 与 13.2 双版本就绪".to_string(), cuda_128.to_string_lossy().to_string())
-    } else if cuda_128.exists() {
-        (true, "v12.8 就绪 (推荐 sm_120)".to_string(), cuda_128.to_string_lossy().to_string())
+    let cuda_133 = std::path::Path::new(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.3\bin\nvcc.exe");
+    let (cuda_installed, cuda_version, nvcc_path) = if cuda_133.exists() {
+        if cuda_128.exists() {
+            (true, "CUDA 13.3 与 12.8 多版本就绪".to_string(), cuda_133.to_string_lossy().to_string())
+        } else {
+            (true, "v13.3 就绪 (C:\\Program Files\\...\\v13.3)".to_string(), cuda_133.to_string_lossy().to_string())
+        }
     } else if cuda_132.exists() {
         (true, "v13.2 就绪".to_string(), cuda_132.to_string_lossy().to_string())
+    } else if cuda_128.exists() {
+        (true, "v12.8 就绪 (推荐 sm_120)".to_string(), cuda_128.to_string_lossy().to_string())
     } else {
         (false, "未检测到 CUDA Toolkit".to_string(), "".to_string())
     };
