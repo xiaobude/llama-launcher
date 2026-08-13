@@ -1,4 +1,4 @@
-﻿# build_llama-server.ps1 - LLaMA Launcher 本地极速编译脚本
+# build_llama-server.ps1 - LLaMA Launcher 本地极速编译脚本
 param(
     [string]$SourceDir   = "llama-source",
     [string]$BuildNumber = "",
@@ -101,10 +101,30 @@ if (Test-Path $SourceDir) {
     $realSourceDir = (Get-Item "llama-source").FullName
     Write-Host "1/5 使用现有源码目录: $realSourceDir" -ForegroundColor Cyan
 } else {
-    Write-Host "1/5 正在克隆 llama.cpp 官方最新源码到 llama-source..." -ForegroundColor Cyan
-    git clone --depth 50 https://github.com/ggml-org/llama.cpp.git llama-source
-    if ($LASTEXITCODE -ne 0) { throw "git clone 失败，请检查网络" }
-    $realSourceDir = (Get-Item "llama-source").FullName
+    Write-Host "1/5 正在克隆 llama.cpp 官方源码到 $SourceDir ..." -ForegroundColor Cyan
+    $parentDir = Split-Path $SourceDir -Parent
+    if ($parentDir -and (-not (Test-Path $parentDir))) {
+        New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
+    }
+    
+    # 解析可用的分支/Tag 标签 (如 b10355)
+    $branchOpt = ""
+    $m = [regex]::Match($SourceDir, 'b?(\d{4,5})')
+    if ($m.Success) {
+        $branchOpt = "b$($m.Groups[1].Value)"
+    }
+    
+    if ($branchOpt) {
+        Write-Host "        尝试直接抓取 Tag: $branchOpt ..." -ForegroundColor Cyan
+        git clone --branch $branchOpt --depth 1 https://github.com/ggml-org/llama.cpp.git $SourceDir 2>$null
+    }
+    
+    if (-not (Test-Path $SourceDir)) {
+        git clone --depth 50 https://github.com/ggml-org/llama.cpp.git $SourceDir
+    }
+    
+    if ($LASTEXITCODE -ne 0 -and (-not (Test-Path $SourceDir))) { throw "git clone 失败，请检查网络" }
+    $realSourceDir = (Get-Item $SourceDir).FullName
 }
 
 # ============================================================

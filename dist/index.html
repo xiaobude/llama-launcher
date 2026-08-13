@@ -314,8 +314,9 @@ claude</pre>
       </div>
     </div>
     <div style="display:flex;gap:10px;align-items:center">
-      <button class="b1" id="btnStartCompile" onclick="startCompileEngine()" style="flex:1;padding:8px;font-size:14px">🚀 一键开始极速编译引擎</button>
-      <button class="bd" id="btnCancelCompile" onclick="cancelCompileEngine()" disabled style="padding:8px 16px">⏹️ 终止编译</button>
+      <button class="b1" id="btnStartCompile" onclick="startCompileEngine(false)" style="flex:1;padding:8px 10px;font-size:13px">🚀 编译指定源码</button>
+      <button class="b1" id="btnFetchCompile" onclick="startCompileEngine(true)" style="flex:1;padding:8px 10px;font-size:13px;background:linear-gradient(135deg, #059669 0%, #10b981 100%)">⚡ 一键获取最新 llama.cpp 并编译</button>
+      <button class="bd" id="btnCancelCompile" onclick="cancelCompileEngine()" disabled style="padding:8px 14px">⏹️ 终止编译</button>
       <button class="bs" onclick="refreshBuildEnv()" style="padding:8px 12px" title="重新检测编译环境">🔄 刷新环境</button>
     </div>
   </div>

@@ -933,23 +933,53 @@ async function refreshBuildEnv() {
     }
 }
 
-async function startCompileEngine() {
+async function startCompileEngine(fetchLatest) {
     if (!tauriInvoke) {
         showToast('Tauri IPC 接口未就绪');
         return;
     }
 
+    var btnStart = $('btnStartCompile');
+    var btnFetch = $('btnFetchCompile');
+    var btnCancel = $('btnCancelCompile');
+
+    btnStart.disabled = true;
+    if (btnFetch) btnFetch.disabled = true;
+    btnCancel.disabled = false;
+
+    clearBuildTerminal();
+
     var sourceDir = $('buildSourceDir').value.trim();
     var buildNumber = $('buildNumber').value.trim();
+
+    if (fetchLatest) {
+        appendTermLine('⚡ 正在从 GitHub (https://github.com/ggml-org/llama.cpp) 获取官方最新 Release 版本号...', 'cyan');
+        try {
+            var tag = await tauriInvoke('get_latest_llama_tag');
+            if (tag) {
+                appendTermLine('✓ 成功获取官方最新版本标签: ' + tag, 'green');
+                var m = tag.match(/\d+/);
+                var num = m ? m[0] : tag;
+                sourceDir = 'C:\\AI\\myllama\\llama.cpp-b' + num;
+                buildNumber = 'b' + num;
+                $('buildSourceDir').value = sourceDir;
+                $('buildNumber').value = buildNumber;
+                appendTermLine('📂 已锁定最新源码保存目录: ' + sourceDir, 'info');
+            }
+        } catch(e) {
+            appendTermLine('⚠️ 获取最新版本号失败 (' + e + ')，将尝试下载/更新至 C:\\AI\\myllama\\llama-source', 'warn');
+            if (!sourceDir || sourceDir === 'llama-source') {
+                sourceDir = 'C:\\AI\\myllama\\llama-source';
+                $('buildSourceDir').value = sourceDir;
+            }
+        }
+    }
+
     var cudaVer = $('buildCudaVer').value;
     var cudaArch = $('buildCudaArch').value;
     var cpuArch = $('buildCpuArch').value;
     var threads = parseInt($('buildThreads').value, 10) || 16;
 
-    $('btnStartCompile').disabled = true;
-    $('btnCancelCompile').disabled = false;
-
-    clearBuildTerminal();
     appendTermLine('🚀 正在初始化极速编译引擎任务...', 'cyan');
     appendTermLine('源码目录: ' + (sourceDir || 'llama-source') + ' | CUDA: ' + cudaVer + ' | CUDA Arch: sm_' + cudaArch + ' | CPU Arch: ' + cpuArch + ' | 线程数: ' + threads, 'info');
 
@@ -965,8 +995,9 @@ async function startCompileEngine() {
         appendTermLine(msg, 'green');
     } catch(e) {
         appendTermLine('❌ 启动编译失败: ' + e, 'err');
-        $('btnStartCompile').disabled = false;
-        $('btnCancelCompile').disabled = true;
+        btnStart.disabled = false;
+        if (btnFetch) btnFetch.disabled = false;
+        btnCancel.disabled = true;
     }
 }
 
@@ -976,6 +1007,7 @@ async function cancelCompileEngine() {
         var msg = await tauriInvoke('cancel_compile_engine');
         appendTermLine('⏹️ ' + msg, 'warn');
         $('btnStartCompile').disabled = false;
+        if ($('btnFetchCompile')) $('btnFetchCompile').disabled = false;
         $('btnCancelCompile').disabled = true;
     } catch(e) {
         appendTermLine('取消编译出错: ' + e, 'err');
@@ -1017,6 +1049,7 @@ if (window.__TAURI__ && window.__TAURI__.event) {
 
     window.__TAURI__.event.listen('compile-finished', function(ev) {
         $('btnStartCompile').disabled = false;
+        if ($('btnFetchCompile')) $('btnFetchCompile').disabled = false;
         $('btnCancelCompile').disabled = true;
 
         if (ev.payload && ev.payload.success) {

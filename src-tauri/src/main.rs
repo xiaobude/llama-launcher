@@ -656,6 +656,42 @@ async fn cancel_compile_engine(state: State<'_, CompileChild>) -> Result<String,
     }
 }
 
+#[tauri::command]
+async fn get_latest_llama_tag() -> Result<String, String> {
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+        .timeout(std::time::Duration::from_secs(8))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    if let Ok(res) = client.get("https://api.github.com/repos/ggml-org/llama.cpp/releases/latest").send().await {
+        if let Ok(json) = res.json::<serde_json::Value>().await {
+            if let Some(tag) = json.get("tag_name").and_then(|v| v.as_str()) {
+                return Ok(tag.to_string());
+            }
+        }
+    }
+
+    let output = Command::new("git.exe")
+        .args(["ls-remote", "--tags", "--refs", "https://github.com/ggml-org/llama.cpp.git"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+
+    if let Ok(out) = output {
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let tags: Vec<&str> = stdout
+            .lines()
+            .filter_map(|l| l.split("refs/tags/").nth(1))
+            .filter(|t| t.starts_with('b') && t[1..].chars().all(|c| c.is_ascii_digit()))
+            .collect();
+        if let Some(last_tag) = tags.last() {
+            return Ok(last_tag.to_string());
+        }
+    }
+
+    Ok("b10355".to_string())
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -677,6 +713,7 @@ fn main() {
             check_build_env,
             start_compile_engine,
             cancel_compile_engine,
+            get_latest_llama_tag,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
