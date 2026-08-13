@@ -684,13 +684,22 @@ async fn get_latest_llama_tag() -> Result<String, String> {
 
     if let Ok(out) = output {
         let stdout = String::from_utf8_lossy(&out.stdout);
-        let tags: Vec<&str> = stdout
+        let mut parsed_tags: Vec<(u32, String)> = stdout
             .lines()
             .filter_map(|l| l.split("refs/tags/").nth(1))
-            .filter(|t| t.starts_with('b') && t[1..].chars().all(|c| c.is_ascii_digit()))
+            .filter_map(|t| {
+                if t.starts_with('b') {
+                    t[1..].parse::<u32>().ok().map(|num| (num, t.to_string()))
+                } else {
+                    None
+                }
+            })
             .collect();
-        if let Some(last_tag) = tags.last() {
-            return Ok(last_tag.to_string());
+
+        parsed_tags.sort_by_key(|(num, _)| *num);
+
+        if let Some((_, max_tag)) = parsed_tags.last() {
+            return Ok(max_tag.clone());
         }
     }
 
