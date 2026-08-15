@@ -351,6 +351,24 @@ function esc(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+function updateActiveServerStatus() {
+    var serverPath = $('serverPath') ? $('serverPath').value.trim() : '';
+    var card = $('envActiveServerCard');
+    var valEl = $('envActiveServerVal');
+    if (!valEl) return;
+
+    if (serverPath) {
+        var fileName = serverPath.split(/[\\/]/).pop();
+        valEl.textContent = fileName || serverPath;
+        valEl.title = '当前指定运行内核路径: ' + serverPath;
+        if (card) card.className = 'env-card ok';
+    } else {
+        valEl.textContent = '默认同级内核 (llama-server.exe)';
+        valEl.title = '未显式指定路径，主服务将默认运行应用同级/内置的 llama-server.exe';
+        if (card) card.className = 'env-card ok';
+    }
+}
+
 function updatePreview() {
     var cmd = buildCmd(), parts = [esc(cmd[0])], i = 1;
     while (i < cmd.length) {
@@ -364,6 +382,7 @@ function updatePreview() {
         } else { i++; }
     }
     $('cmdPreview').innerHTML = parts.join(' \\\n    ');
+    updateActiveServerStatus();
 }
 
 // --- Status bar ---
@@ -928,6 +947,8 @@ async function refreshBuildEnv() {
             ninjaCard.className = 'env-card ok';
             $('envNinjaVal').textContent = 'MSBuild 原生构建';
         }
+
+        updateActiveServerStatus();
     } catch(e) {
         console.error('刷新环境失败:', e);
     }

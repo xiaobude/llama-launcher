@@ -243,7 +243,11 @@ claude</pre>
   <!-- Environment Cards Grid -->
   <div class="card" style="margin-bottom:10px">
     <div style="font-weight:600;font-size:14px;color:#38bdf8;margin-bottom:8px">🔍 编译环境检测 (Environment Pre-flight)</div>
-    <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:10px" id="envCardsGrid">
+    <div style="display:grid;grid-template-columns:repeat(5, 1fr);gap:10px" id="envCardsGrid">
+      <div class="env-card ok" id="envActiveServerCard">
+        <div class="env-title">🚀 当前配置/运行内核</div>
+        <div class="env-val" id="envActiveServerVal" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="检测中...">检测中...</div>
+      </div>
       <div class="env-card" id="envCudaCard">
         <div class="env-title">CUDA Toolkit</div>
         <div class="env-val" id="envCudaVal">检测中...</div>
