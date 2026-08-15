@@ -1,4 +1,4 @@
-# build_llama-server.ps1 - LLaMA Launcher 本地极速编译脚本
+﻿# build_llama-server.ps1 - LLaMA Launcher 本地极速编译脚本
 param(
     [string]$SourceDir   = "llama-source",
     [string]$BuildNumber = "",
@@ -317,10 +317,38 @@ if ((Get-Item $appRoot).Name -eq "logs") {
 }
 
 $destExe = Join-Path $appRoot "llama-server.exe"
+
+# 1. 如果存在旧的 llama-server.exe，通过 --version 获取其版本并重命名备份为 llama-server_bxxxxx.exe
+if (Test-Path $destExe) {
+    $oldTag = ""
+    try {
+        $oldVerOut = & $destExe --version 2>&1
+        $oldVerStr = ($oldVerOut | Out-String)
+        $m1 = [regex]::Match($oldVerStr, 'version:\s*(\d+)')
+        if ($m1.Success) {
+            $oldTag = "b$($m1.Groups[1].Value)"
+        } else {
+            $m2 = [regex]::Match($oldVerStr, 'b?(\d{4,5})')
+            if ($m2.Success) {
+                $oldTag = "b$($m2.Groups[1].Value)"
+            }
+        }
+    } catch { }
+
+    if (-not $oldTag) { $oldTag = "b_old" }
+
+    $backupName = "llama-server_${oldTag}.exe"
+    $backupPath = Join-Path $appRoot $backupName
+    Write-Host "5/5 检测到已有内核，正在将其备份归档为: $backupName ..." -ForegroundColor Cyan
+    Copy-Item $destExe -Destination $backupPath -Force
+}
+
+# 2. 将新编译好的 llama-server.exe 拷贝到目标路径
 Copy-Item $exe.FullName -Destination $destExe -Force
 
-$versionedExe = Join-Path $appRoot "llama-server-b${tagNum}-${commitHash}.exe"
-Copy-Item $exe.FullName -Destination $versionedExe -Force
+# 3. 另外存一份带新版本号的命名文件 (如 llama-server_b10423.exe)
+$newVersionedExe = Join-Path $appRoot "llama-server_b${tagNum}.exe"
+Copy-Item $exe.FullName -Destination $newVersionedExe -Force
 
 $resDir = Join-Path $appRoot "src-tauri\resources"
 if (Test-Path $resDir) {
