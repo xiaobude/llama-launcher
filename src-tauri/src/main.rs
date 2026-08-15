@@ -706,6 +706,40 @@ async fn get_latest_llama_tag() -> Result<String, String> {
     Ok("b10355".to_string())
 }
 
+#[tauri::command]
+async fn get_server_version(server_path: String) -> Result<String, String> {
+    let exe = if server_path.trim().is_empty() {
+        let root_dir = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+            .unwrap_or_else(|| PathBuf::from("."));
+        if root_dir.join("llama-server.exe").exists() {
+            root_dir.join("llama-server.exe").to_string_lossy().to_string()
+        } else {
+            "llama-server.exe".to_string()
+        }
+    } else {
+        server_path.trim().to_string()
+    };
+
+    let output = Command::new(&exe)
+        .arg("--version")
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map_err(|e| format!("无法调起 {} : {}", exe, e))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+
+    if !stdout.is_empty() {
+        Ok(stdout)
+    } else if !stderr.is_empty() {
+        Ok(stderr)
+    } else {
+        Ok(format!("{} (检测完成，无版本输出)", exe))
+    }
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -728,6 +762,7 @@ fn main() {
             start_compile_engine,
             cancel_compile_engine,
             get_latest_llama_tag,
+            get_server_version,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

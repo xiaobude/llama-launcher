@@ -360,12 +360,29 @@ function updateActiveServerStatus() {
     if (serverPath) {
         var fileName = serverPath.split(/[\\/]/).pop();
         valEl.textContent = fileName || serverPath;
-        valEl.title = '当前指定运行内核路径: ' + serverPath;
+        valEl.title = '【点击向控制台输出 --version 版本】当前指定运行内核: ' + serverPath;
         if (card) card.className = 'env-card ok';
     } else {
         valEl.textContent = '默认同级内核 (llama-server.exe)';
-        valEl.title = '未显式指定路径，主服务将默认运行应用同级/内置的 llama-server.exe';
+        valEl.title = '【点击向控制台输出 --version 版本】未显式指定路径，主服务将默认运行同级/内置 llama-server.exe';
         if (card) card.className = 'env-card ok';
+    }
+}
+
+async function checkActiveServerVersion() {
+    if (!tauriInvoke) return;
+    var serverPath = $('serverPath') ? $('serverPath').value.trim() : '';
+    appendTermLine('🔍 正在检测目标内核版本信息 (llama-server.exe --version)...', 'cyan');
+    try {
+        var ver = await tauriInvoke('get_server_version', { serverPath: serverPath });
+        appendTermLine('========================================', 'green');
+        appendTermLine('📋 运行内核版本详情 (' + (serverPath || '默认同级 llama-server.exe') + '):', 'green');
+        ver.split(/\r?\n/).forEach(function(line) {
+            if (line.trim()) appendTermLine('   ' + line.trim(), 'info');
+        });
+        appendTermLine('========================================', 'green');
+    } catch(e) {
+        appendTermLine('❌ 获取内核版本失败: ' + e, 'err');
     }
 }
 
