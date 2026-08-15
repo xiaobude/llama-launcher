@@ -708,36 +708,59 @@ async fn get_latest_llama_tag() -> Result<String, String> {
 
 #[tauri::command]
 async fn get_server_version(server_path: String) -> Result<String, String> {
-    let exe = if server_path.trim().is_empty() {
+    let raw_path = server_path.trim();
+    let exe_path = if raw_path.is_empty() {
         let root_dir = std::env::current_exe()
             .ok()
             .and_then(|p| p.parent().map(|d| d.to_path_buf()))
             .unwrap_or_else(|| PathBuf::from("."));
         if root_dir.join("llama-server.exe").exists() {
-            root_dir.join("llama-server.exe").to_string_lossy().to_string()
+            root_dir.join("llama-server.exe")
+        } else if std::path::Path::new("llama-server.exe").exists() {
+            PathBuf::from("llama-server.exe")
         } else {
-            "llama-server.exe".to_string()
+            PathBuf::from("llama-server.exe")
         }
     } else {
-        server_path.trim().to_string()
+        let p = PathBuf::from(raw_path);
+        if p.is_relative() {
+            let root_dir = std::env::current_exe()
+                .ok()
+                .and_then(|parent| parent.parent().map(|d| d.to_path_buf()))
+                .unwrap_or_else(|| PathBuf::from("."));
+            if root_dir.join(&p).exists() {
+                root_dir.join(&p)
+            } else if std::path::Path::new(&p).exists() {
+                PathBuf::from(&p)
+            } else {
+                p
+            }
+        } else {
+            p
+        }
     };
 
-    let output = Command::new(&exe)
+    let canonical = exe_path.canonicalize().unwrap_or(exe_path.clone());
+    let display_path = canonical.to_string_lossy().replace(r"\\?\", "");
+
+    let output = Command::new(&exe_path)
         .arg("--version")
         .creation_flags(CREATE_NO_WINDOW)
         .output()
-        .map_err(|e| format!("无法调起 {} : {}", exe, e))?;
+        .map_err(|e| format!("无法调起可执行文件 ({}) : {}", display_path, e))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
 
-    if !stdout.is_empty() {
-        Ok(stdout)
+    let ver_info = if !stdout.is_empty() {
+        stdout
     } else if !stderr.is_empty() {
-        Ok(stderr)
+        stderr
     } else {
-        Ok(format!("{} (检测完成，无版本输出)", exe))
-    }
+        "已调起但未返回版本字符串".to_string()
+    };
+
+    Ok(format!("[{}]\n{}", display_path, ver_info))
 }
 
 fn main() {

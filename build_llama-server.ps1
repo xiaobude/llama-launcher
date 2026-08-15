@@ -324,14 +324,10 @@ if (Test-Path $destExe) {
     try {
         $oldVerOut = & $destExe --version 2>&1
         $oldVerStr = ($oldVerOut | Out-String)
-        $m1 = [regex]::Match($oldVerStr, 'version:\s*(\d+)')
+        $m1 = [regex]::Match($oldVerStr, 'build\s+(\d{4,5})|version:\s*(\d{4,5})|b(\d{4,5})')
         if ($m1.Success) {
-            $oldTag = "b$($m1.Groups[1].Value)"
-        } else {
-            $m2 = [regex]::Match($oldVerStr, 'b?(\d{4,5})')
-            if ($m2.Success) {
-                $oldTag = "b$($m2.Groups[1].Value)"
-            }
+            $num = ($m1.Groups[1].Value, $m1.Groups[2].Value, $m1.Groups[3].Value | Where-Object { $_ })[0]
+            $oldTag = "b$num"
         }
     } catch { }
 
