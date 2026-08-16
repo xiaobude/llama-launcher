@@ -234,7 +234,7 @@ function buildFields() {
         threadsBatch: $('threadsBatch').value,
         jinja: $('jinja').checked,
         flashAttn: $('flashAttn').checked,
-        noMmap: $('noMmap').checked,
+        reasoningPreserve: $('reasoningPreserve') ? $('reasoningPreserve').checked : false,
         kvUnified: $('kvUnified').checked,
         contBatching: $('contBatching').checked,
         metrics: $('metrics').checked,
@@ -269,7 +269,7 @@ function applyFields(f) {
         var e = $(k); if (e && f.hasOwnProperty(k)) e.value = f[k];
     });
 
-    ['jinja','flashAttn','noMmap','kvUnified','contBatching','metrics','reasoning','enableAnthropicProxy'].forEach(function(k) {
+    ['jinja','flashAttn','reasoningPreserve','kvUnified','contBatching','metrics','reasoning','enableAnthropicProxy'].forEach(function(k) {
         var e = $(k); if (e && f.hasOwnProperty(k)) e.checked = !!f[k];
     });
 
@@ -319,7 +319,7 @@ function buildCmd() {
     if (f.threadsBatch) L.push('-tb', f.threadsBatch);
     if (f.jinja) L.push('--jinja');
     if (f.flashAttn) L.push('--flash-attn', 'on');
-    if (f.noMmap) L.push('--no-mmap');
+    if (f.reasoningPreserve) L.push('--reasoning-preserve');
     L.push(f.kvUnified ? '--kv-unified' : '--no-kv-unified');
     if (f.contBatching) L.push('--cont-batching');
     if (f.metrics) L.push('--metrics');
