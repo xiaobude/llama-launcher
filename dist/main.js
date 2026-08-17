@@ -1,7 +1,25 @@
 var builtins = {};
 var customProfiles = {};
 var healthTimer = null;
-var tauriInvoke = (window.__TAURI__ && window.__TAURI__.core) ? window.__TAURI__.core.invoke : null;
+
+function tauriInvoke(cmd, args) {
+    var payload = args || {};
+    if (window.__TAURI__) {
+        if (window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function') {
+            return window.__TAURI__.core.invoke(cmd, payload);
+        }
+        if (typeof window.__TAURI__.invoke === 'function') {
+            return window.__TAURI__.invoke(cmd, payload);
+        }
+        if (window.__TAURI__.tauri && typeof window.__TAURI__.tauri.invoke === 'function') {
+            return window.__TAURI__.tauri.invoke(cmd, payload);
+        }
+    }
+    if (window.__TAURI_INTERNALS__ && typeof window.__TAURI_INTERNALS__.invoke === 'function') {
+        return window.__TAURI_INTERNALS__.invoke(cmd, payload);
+    }
+    return Promise.reject(new Error('Tauri IPC 接口未就绪'));
+}
 
 function $(i) { return document.getElementById(i); }
 
@@ -687,6 +705,8 @@ function sendChat() {
         $('btnSend').textContent = '发送';
         aiDiv.className = 'msg-e';
         aiDiv.textContent = '❌ 无法连接到服务，请检查端口 ' + port + ' 是否正确';
+    };
+
     xhr.send(JSON.stringify(reqBody));
 }
 
@@ -884,9 +904,18 @@ function fitChatHeight() {
     msgs.style.height = newH + 'px';
 }
 
-// --- Init ---
+var initDone = false;
 async function init() {
-    // 启动时根据屏幕真实可用高度按 90% 动态计算窗口高度（如 2560x1440 屏幕下为 ~1296px），并居中定位
+    if (initDone) return;
+
+    // 等待 Tauri IPC 注入就绪 (最多等待 1.5s)
+    for (var i = 0; i < 30; i++) {
+        if ((window.__TAURI__ && window.__TAURI__.core) || window.__TAURI_INTERNALS__) break;
+        await new Promise(function(r) { setTimeout(r, 50); });
+    }
+    initDone = true;
+
+    // 启动时根据屏幕真实可用高度按 90% 动态计算窗口高度并居中定位
     if (window.__TAURI__ && window.__TAURI__.window) {
         try {
             var W = window.__TAURI__.window;
@@ -902,29 +931,34 @@ async function init() {
         } catch(e) { console.error('窗口大小调整失败:', e); }
     }
 
-    if (window.__TAURI__) {
-        try { builtins = await tauriInvoke('load_builtins'); }
-        catch (e) { console.error('加载内置配置失败:', e); builtins = {}; }
+    try {
+        builtins = await tauriInvoke('load_builtins') || {};
+    } catch (e) {
+        console.error('加载内置配置失败:', e);
+        builtins = {};
+    }
 
-        try { customProfiles = await tauriInvoke('load_profiles'); }
-        catch (e) { customProfiles = {}; }
+    try {
+        customProfiles = await tauriInvoke('load_profiles') || {};
+    } catch (e) {
+        console.error('加载自定义配置失败:', e);
+        customProfiles = {};
     }
 
     refreshProfiles(localStorage.getItem('lastProfile'));
     loadProfile();
 
-    if (window.__TAURI__) {
-        try {
-            var bundledPath = await tauriInvoke('get_bundled_server_path');
-            if (bundledPath) {
-                var currentPath = $('serverPath').value;
-                if (!currentPath || currentPath === 'C:\\AI\\llama\\llama-server.exe') {
-                    $('serverPath').value = bundledPath;
-                    updatePreview();
-                }
+    try {
+        var bundledPath = await tauriInvoke('get_bundled_server_path');
+        if (bundledPath) {
+            var currentPath = $('serverPath').value;
+            if (!currentPath || currentPath === 'C:\\AI\\llama\\llama-server.exe') {
+                $('serverPath').value = bundledPath;
+                updatePreview();
             }
-        } catch(e) {}
-    }
+        }
+    } catch(e) {}
+
     updatePreview();
     updateMmprojDim();
     updateSpecVis();
@@ -964,7 +998,6 @@ async function init() {
 
 // --- Engine Compilation Module ---
 async function refreshBuildEnv() {
-    if (!tauriInvoke) return;
     try {
         var env = await tauriInvoke('check_build_env');
         
@@ -1011,11 +1044,6 @@ async function refreshBuildEnv() {
 }
 
 async function startCompileEngine(fetchLatest) {
-    if (!tauriInvoke) {
-        showToast('Tauri IPC 接口未就绪');
-        return;
-    }
-
     var btnStart = $('btnStartCompile');
     var btnFetch = $('btnFetchCompile');
     var btnCancel = $('btnCancelCompile');
@@ -1079,7 +1107,6 @@ async function startCompileEngine(fetchLatest) {
 }
 
 async function cancelCompileEngine() {
-    if (!tauriInvoke) return;
     try {
         var msg = await tauriInvoke('cancel_compile_engine');
         appendTermLine('⏹️ ' + msg, 'warn');
@@ -1141,4 +1168,9 @@ if (window.__TAURI__ && window.__TAURI__.event) {
     });
 }
 
-init();
+// 确保 DOM 加载完成后执行 init
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+} else {
+    init();
+}

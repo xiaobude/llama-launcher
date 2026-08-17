@@ -280,13 +280,27 @@ async fn stop_server(
 fn find_file_path(app: &tauri::AppHandle, filename: &str) -> PathBuf {
     let exe_dir = get_exe_dir();
     
-    // 1. 同级目录 (启动器运行文件与配置文件在同一目录)
+    // 1. 启动器运行文件所在目录 (最高优先级)
     let direct = exe_dir.join(filename);
     if direct.exists() {
         return direct;
     }
 
-    // 2. 内置 resources 目录 (随安装包分发的资源备用)
+    // 2. 当前工作目录
+    if let Ok(cwd) = std::env::current_dir() {
+        let cwd_file = cwd.join(filename);
+        if cwd_file.exists() {
+            return cwd_file;
+        }
+    }
+
+    // 3. 用户默认工作目录 C:\AI\getAPI
+    let ai_dir_file = PathBuf::from(r"C:\AI\getAPI").join(filename);
+    if ai_dir_file.exists() {
+        return ai_dir_file;
+    }
+
+    // 4. 内置 resources 目录 (随安装包分发的资源备用)
     let res = exe_dir.join("resources").join(filename);
     if res.exists() {
         return res;
@@ -839,4 +853,21 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_real_config_files() {
+        let p1 = PathBuf::from(r"C:\AI\getAPI\config.json");
+        let p2 = PathBuf::from(r"C:\AI\getAPI\profiles.json");
+        let v1 = parse_json_file(&p1);
+        let v2 = parse_json_file(&p2);
+        println!("config.json parsed: is_some={}, obj_len={:?}", v1.is_some(), v1.as_ref().and_then(|v| v.as_object()).map(|o| o.len()));
+        println!("profiles.json parsed: is_some={}, obj_len={:?}", v2.is_some(), v2.as_ref().and_then(|v| v.as_object()).map(|o| o.len()));
+        assert!(v1.is_some());
+        assert!(v2.is_some());
+    }
 }
