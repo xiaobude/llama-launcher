@@ -280,7 +280,21 @@ function applyFields(f) {
         var e = $(k); if (e && f.hasOwnProperty(k)) e.value = f[k];
     });
 
+    syncMainEffortToChat();
     updateSpecVis();
+}
+
+function syncChatEffortToMain() {
+    if ($('reasoningEffort') && $('chatReasoningEffort')) {
+        $('reasoningEffort').value = $('chatReasoningEffort').value;
+        updatePreview();
+    }
+}
+
+function syncMainEffortToChat() {
+    if ($('reasoningEffort') && $('chatReasoningEffort')) {
+        $('chatReasoningEffort').value = $('reasoningEffort').value;
+    }
 }
 
 function updateMmprojDim() {
@@ -609,6 +623,18 @@ function sendChat() {
     xhr.open('POST', 'http://localhost:' + port + '/v1/chat/completions', true);
     xhr.setRequestHeader('Content-Type', 'application/json');
 
+    var effort = $('chatReasoningEffort') ? $('chatReasoningEffort').value : 'default';
+    var reqBody = {
+        model: getActiveAlias(),
+        messages: msgs,
+        stream: true,
+        temperature: parseFloat($('chatTemp').value) || 0.7,
+        max_tokens: parseInt($('chatMaxTok').value, 10) || 4096
+    };
+    if (effort && effort !== 'default') {
+        reqBody.reasoning_effort = effort;
+    }
+
     xhr.onreadystatechange = function() {
         if (xhr.readyState >= 3) {
             var chunk = xhr.responseText.substring(lastIdx);
@@ -661,15 +687,7 @@ function sendChat() {
         $('btnSend').textContent = '发送';
         aiDiv.className = 'msg-e';
         aiDiv.textContent = '❌ 无法连接到服务，请检查端口 ' + port + ' 是否正确';
-    };
-
-    xhr.send(JSON.stringify({
-        model: $('alias').value || 'local-model',
-        messages: msgs,
-        temperature: parseFloat($('chatTemp').value) || 0.7,
-        max_tokens: parseInt($('chatMaxTok').value) || 4096,
-        stream: true
-    }));
+    xhr.send(JSON.stringify(reqBody));
 }
 
 function mdToHtml(text) {
