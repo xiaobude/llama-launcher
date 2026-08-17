@@ -285,6 +285,10 @@ fn find_file_path(app: &tauri::AppHandle, filename: &str) -> PathBuf {
                 if direct.exists() {
                     return direct;
                 }
+                let config_sub = current.join("config").join(filename);
+                if config_sub.exists() {
+                    return config_sub;
+                }
                 let nested = current.join("resources").join(filename);
                 if nested.exists() {
                     return nested;
@@ -309,45 +313,135 @@ fn find_file_path(app: &tauri::AppHandle, filename: &str) -> PathBuf {
     PathBuf::from(filename)
 }
 
+fn strip_json_comments(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+    let mut in_string = false;
+    let mut escape = false;
+
+    while let Some(c) = chars.next() {
+        if in_string {
+            out.push(c);
+            if escape {
+                escape = false;
+            } else if c == '\\' {
+                escape = true;
+            } else if c == '"' {
+                in_string = false;
+            }
+        } else {
+            if c == '"' {
+                in_string = true;
+                out.push(c);
+            } else if c == '/' {
+                if let Some(&next) = chars.peek() {
+                    if next == '/' {
+                        chars.next();
+                        while let Some(&nc) = chars.peek() {
+                            if nc == '\n' || nc == '\r' {
+                                break;
+                            }
+                            chars.next();
+                        }
+                    } else if next == '*' {
+                        chars.next();
+                        while let Some(nc) = chars.next() {
+                            if nc == '*' {
+                                if let Some(&nc2) = chars.peek() {
+                                    if nc2 == '/' {
+                                        chars.next();
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        out.push(c);
+                    }
+                } else {
+                    out.push(c);
+                }
+            } else {
+                out.push(c);
+            }
+        }
+    }
+    out
+}
+
 fn parse_json_file(path: &PathBuf) -> Option<Value> {
-    fs::read_to_string(path)
-        .ok()
-        .and_then(|s| serde_json::from_str(s.trim_start_matches('\u{FEFF}')).ok())
+    let content = fs::read_to_string(path).ok()?;
+    let clean = content.trim_start_matches('\u{FEFF}');
+    let stripped = strip_json_comments(clean);
+    serde_json::from_str(&stripped).ok()
 }
 
 #[tauri::command]
 async fn load_builtins(app: tauri::AppHandle) -> Result<Value, String> {
-    let path = find_file_path(&app, "config.json");
-    if !path.exists() {
-        return Ok(Value::Object(serde_json::Map::new()));
+    let candidates = [
+        find_file_path(&app, "config.json"),
+        find_file_path(&app, "config/config.json"),
+    ];
+
+    for path in &candidates {
+        if path.exists() {
+            if let Some(val) = parse_json_file(path) {
+                if val.is_object() && !val.as_object().unwrap().is_empty() {
+                    return Ok(val);
+                }
+            }
+        }
     }
-    parse_json_file(&path).ok_or_else(|| "内置配置文件解析失败".to_string())
+
+    Ok(Value::Object(serde_json::Map::new()))
 }
 
 #[tauri::command]
 async fn load_profiles(app: tauri::AppHandle) -> Result<Value, String> {
-    let path = find_file_path(&app, "profiles.json");
-    if !path.exists() {
-        return Ok(Value::Object(serde_json::Map::new()));
+    let candidates = [
+        find_file_path(&app, "profiles.json"),
+        find_file_path(&app, "config/profiles.json"),
+        find_file_path(&app, "config.json"),
+        find_file_path(&app, "config/config.json"),
+    ];
+
+    for path in &candidates {
+        if path.exists() {
+            if let Some(val) = parse_json_file(path) {
+                if val.is_object() && !val.as_object().unwrap().is_empty() {
+                    return Ok(val);
+                }
+            }
+        }
     }
-    parse_json_file(&path).ok_or_else(|| "自定义配置文件解析失败".to_string())
+
+    Ok(Value::Object(serde_json::Map::new()))
 }
 
 #[tauri::command]
 async fn save_profiles(app: tauri::AppHandle, profiles: Value) -> Result<String, String> {
-    let path = find_file_path(&app, "profiles.json");
-    let target_path = if path.exists() {
-        path
-    } else if let Ok(exe_path) = std::env::current_exe() {
-        exe_path
-            .parent()
-            .map(|d| d.join("profiles.json"))
-            .unwrap_or_else(|| PathBuf::from("profiles.json"))
-    } else {
-        PathBuf::from("profiles.json")
-    };
+    let candidates = [
+        find_file_path(&app, "profiles.json"),
+        find_file_path(&app, "config/profiles.json"),
+        find_file_path(&app, "config.json"),
+    ];
+    
+    let mut target_path = candidates.iter().find(|p| p.exists()).cloned();
+    if target_path.is_none() {
+        if let Ok(exe_path) = std::env::current_exe() {
+            if let Some(exe_dir) = exe_path.parent() {
+                let cfg_dir = exe_dir.join("config");
+                if cfg_dir.exists() {
+                    target_path = Some(cfg_dir.join("profiles.json"));
+                } else {
+                    target_path = Some(exe_dir.join("profiles.json"));
+                }
+            }
+        }
+    }
+    let save_path = target_path.unwrap_or_else(|| PathBuf::from("profiles.json"));
     let json = serde_json::to_string_pretty(&profiles).map_err(|e| e.to_string())?;
-    fs::write(&target_path, json).map_err(|e| e.to_string())?;
+    fs::write(&save_path, json).map_err(|e| e.to_string())?;
     Ok("已保存".to_string())
 }
 
