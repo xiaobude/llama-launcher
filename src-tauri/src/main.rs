@@ -276,37 +276,67 @@ async fn stop_server(
 // Looks beside the exe (and up to 5 parent dirs, plus a bundled "resources"
 // subfolder at each level) so config.json/profiles.json can be hand-placed
 // next to the install, copied elsewhere, or shipped via the installer.
-fn find_file_path(app: &tauri::AppHandle, filename: &str) -> PathBuf {
+fn find_file_candidates(app: &tauri::AppHandle, filename: &str) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+
+    // 1. Direct environment directory C:\AI\getAPI
+    candidates.push(PathBuf::from(r"C:\AI\getAPI").join(filename));
+    candidates.push(PathBuf::from(r"C:\AI\getAPI\config").join(filename));
+
+    // 2. Exe directory and up to 6 parent levels
     if let Ok(exe_path) = std::env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
-            let direct = exe_dir.join(filename);
-            if direct.exists() {
-                return direct;
-            }
-            let config_sub = exe_dir.join("config").join(filename);
-            if config_sub.exists() {
-                return config_sub;
-            }
-            let res_sub = exe_dir.join("resources").join(filename);
-            if res_sub.exists() {
-                return res_sub;
-            }
-            let logs_parent = exe_dir.join("..").join(filename);
-            if logs_parent.exists() {
-                return logs_parent;
+            let mut curr = exe_dir.to_path_buf();
+            for _ in 0..6 {
+                candidates.push(curr.join(filename));
+                candidates.push(curr.join("config").join(filename));
+                candidates.push(curr.join("resources").join(filename));
+                if let Some(parent) = curr.parent() {
+                    curr = parent.to_path_buf();
+                } else {
+                    break;
+                }
             }
         }
     }
 
+    // 3. Current working directory and parent levels
+    if let Ok(cwd) = std::env::current_dir() {
+        let mut curr = cwd;
+        for _ in 0..4 {
+            candidates.push(curr.join(filename));
+            candidates.push(curr.join("config").join(filename));
+            if let Some(parent) = curr.parent() {
+                curr = parent.to_path_buf();
+            } else {
+                break;
+            }
+        }
+    }
+
+    // 4. Tauri app resource directories
     if let Ok(p) = app
         .path()
         .resolve(format!("resources/{}", filename), tauri::path::BaseDirectory::Resource)
     {
+        candidates.push(p);
+    }
+    if let Ok(p) = app
+        .path()
+        .resolve(filename, tauri::path::BaseDirectory::Resource)
+    {
+        candidates.push(p);
+    }
+
+    candidates
+}
+
+fn find_file_path(app: &tauri::AppHandle, filename: &str) -> PathBuf {
+    for p in find_file_candidates(app, filename) {
         if p.exists() {
             return p;
         }
     }
-
     PathBuf::from(filename)
 }
 
@@ -387,6 +417,8 @@ fn is_valid_profile_map(val: &Value) -> bool {
                     || profile_obj.contains_key("serverPath")
                     || profile_obj.contains_key("port")
                     || profile_obj.contains_key("gpuLayers")
+                    || profile_obj.contains_key("ctxSize")
+                    || profile_obj.contains_key("alias")
                 {
                     return true;
                 }
@@ -398,72 +430,54 @@ fn is_valid_profile_map(val: &Value) -> bool {
 
 #[tauri::command]
 async fn load_builtins(app: tauri::AppHandle) -> Result<Value, String> {
-    let candidates = [
-        find_file_path(&app, "config.json"),
-        find_file_path(&app, "config/config.json"),
-    ];
-
-    for path in &candidates {
+    for path in find_file_candidates(&app, "config.json") {
         if path.exists() {
-            if let Some(val) = parse_json_file(path) {
+            if let Some(val) = parse_json_file(&path) {
                 if is_valid_profile_map(&val) {
                     return Ok(val);
                 }
             }
         }
     }
-
     Ok(Value::Object(serde_json::Map::new()))
 }
 
 #[tauri::command]
 async fn load_profiles(app: tauri::AppHandle) -> Result<Value, String> {
-    let candidates = [
-        find_file_path(&app, "profiles.json"),
-        find_file_path(&app, "config/profiles.json"),
-        find_file_path(&app, "config.json"),
-        find_file_path(&app, "config/config.json"),
-    ];
-
-    for path in &candidates {
+    for path in find_file_candidates(&app, "profiles.json") {
         if path.exists() {
-            if let Some(val) = parse_json_file(path) {
+            if let Some(val) = parse_json_file(&path) {
                 if is_valid_profile_map(&val) {
                     return Ok(val);
                 }
             }
         }
     }
-
     Ok(Value::Object(serde_json::Map::new()))
 }
 
 #[tauri::command]
 async fn save_profiles(app: tauri::AppHandle, profiles: Value) -> Result<String, String> {
-    let candidates = [
-        find_file_path(&app, "profiles.json"),
-        find_file_path(&app, "config/profiles.json"),
-        find_file_path(&app, "config.json"),
-    ];
-    
-    let mut target_path = candidates.iter().find(|p| p.exists()).cloned();
-    if target_path.is_none() {
+    let mut save_path = None;
+    for path in find_file_candidates(&app, "profiles.json") {
+        if path.exists() {
+            save_path = Some(path);
+            break;
+        }
+    }
+    if save_path.is_none() {
         if let Ok(exe_path) = std::env::current_exe() {
             if let Some(exe_dir) = exe_path.parent() {
-                let cfg_dir = exe_dir.join("config");
-                if cfg_dir.exists() {
-                    target_path = Some(cfg_dir.join("profiles.json"));
-                } else {
-                    target_path = Some(exe_dir.join("profiles.json"));
-                }
+                save_path = Some(exe_dir.join("profiles.json"));
             }
         }
     }
-    let save_path = target_path.unwrap_or_else(|| PathBuf::from("profiles.json"));
+    let target = save_path.unwrap_or_else(|| PathBuf::from(r"C:\AI\getAPI\profiles.json"));
     let json = serde_json::to_string_pretty(&profiles).map_err(|e| e.to_string())?;
-    fs::write(&save_path, json).map_err(|e| e.to_string())?;
+    fs::write(&target, json).map_err(|e| e.to_string())?;
     Ok("已保存".to_string())
 }
+
 
 #[tauri::command]
 async fn open_log(app: tauri::AppHandle) -> Result<(), String> {
