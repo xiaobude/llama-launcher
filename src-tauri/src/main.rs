@@ -279,24 +279,21 @@ async fn stop_server(
 fn find_file_path(app: &tauri::AppHandle, filename: &str) -> PathBuf {
     if let Ok(exe_path) = std::env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
-            let mut current = exe_dir.to_path_buf();
-            for _ in 0..6 {
-                let direct = current.join(filename);
-                if direct.exists() {
-                    return direct;
-                }
-                let config_sub = current.join("config").join(filename);
-                if config_sub.exists() {
-                    return config_sub;
-                }
-                let nested = current.join("resources").join(filename);
-                if nested.exists() {
-                    return nested;
-                }
-                match current.parent() {
-                    Some(parent) => current = parent.to_path_buf(),
-                    None => break,
-                }
+            let direct = exe_dir.join(filename);
+            if direct.exists() {
+                return direct;
+            }
+            let config_sub = exe_dir.join("config").join(filename);
+            if config_sub.exists() {
+                return config_sub;
+            }
+            let res_sub = exe_dir.join("resources").join(filename);
+            if res_sub.exists() {
+                return res_sub;
+            }
+            let logs_parent = exe_dir.join("..").join(filename);
+            if logs_parent.exists() {
+                return logs_parent;
             }
         }
     }
@@ -379,6 +376,26 @@ fn parse_json_file(path: &PathBuf) -> Option<Value> {
     serde_json::from_str::<Value>(&stripped).ok()
 }
 
+fn is_valid_profile_map(val: &Value) -> bool {
+    if let Some(obj) = val.as_object() {
+        if obj.is_empty() {
+            return false;
+        }
+        for (_k, v) in obj {
+            if let Some(profile_obj) = v.as_object() {
+                if profile_obj.contains_key("modelPath")
+                    || profile_obj.contains_key("serverPath")
+                    || profile_obj.contains_key("port")
+                    || profile_obj.contains_key("gpuLayers")
+                {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 #[tauri::command]
 async fn load_builtins(app: tauri::AppHandle) -> Result<Value, String> {
     let candidates = [
@@ -389,7 +406,7 @@ async fn load_builtins(app: tauri::AppHandle) -> Result<Value, String> {
     for path in &candidates {
         if path.exists() {
             if let Some(val) = parse_json_file(path) {
-                if val.is_object() {
+                if is_valid_profile_map(&val) {
                     return Ok(val);
                 }
             }
@@ -411,7 +428,7 @@ async fn load_profiles(app: tauri::AppHandle) -> Result<Value, String> {
     for path in &candidates {
         if path.exists() {
             if let Some(val) = parse_json_file(path) {
-                if val.is_object() {
+                if is_valid_profile_map(&val) {
                     return Ok(val);
                 }
             }
