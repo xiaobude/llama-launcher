@@ -372,8 +372,11 @@ fn strip_json_comments(input: &str) -> String {
 fn parse_json_file(path: &PathBuf) -> Option<Value> {
     let content = fs::read_to_string(path).ok()?;
     let clean = content.trim_start_matches('\u{FEFF}');
+    if let Ok(v) = serde_json::from_str::<Value>(clean) {
+        return Some(v);
+    }
     let stripped = strip_json_comments(clean);
-    serde_json::from_str(&stripped).ok()
+    serde_json::from_str::<Value>(&stripped).ok()
 }
 
 #[tauri::command]
@@ -386,7 +389,7 @@ async fn load_builtins(app: tauri::AppHandle) -> Result<Value, String> {
     for path in &candidates {
         if path.exists() {
             if let Some(val) = parse_json_file(path) {
-                if val.is_object() && !val.as_object().unwrap().is_empty() {
+                if val.is_object() {
                     return Ok(val);
                 }
             }
@@ -408,7 +411,7 @@ async fn load_profiles(app: tauri::AppHandle) -> Result<Value, String> {
     for path in &candidates {
         if path.exists() {
             if let Some(val) = parse_json_file(path) {
-                if val.is_object() && !val.as_object().unwrap().is_empty() {
+                if val.is_object() {
                     return Ok(val);
                 }
             }
