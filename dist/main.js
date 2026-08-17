@@ -44,6 +44,7 @@ async function browseFile(tid, type) {
     var filterName = '', extension = '';
     if (type === 'exe') { filterName = 'EXE程序'; extension = 'exe'; }
     else if (type === 'gguf') { filterName = 'GGUF模型'; extension = 'gguf'; }
+    else if (type === 'jinja') { filterName = 'Jinja模板 (*.jinja)'; extension = 'jinja'; }
     else if (type === 'dir') { filterName = '文件夹'; extension = 'dir'; }
 
     try {
@@ -249,6 +250,8 @@ function buildFields() {
         logFormat: $('logFormat').value,
         imageMinTokens: $('imageMinTokens').value,
         extraParams: $('extraParams').value,
+        chatTemplateFile: $('chatTemplateFile') ? $('chatTemplateFile').value : '',
+        reasoningEffort: $('reasoningEffort') ? $('reasoningEffort').value : 'default',
         enableAnthropicProxy: $('enableAnthropicProxy').checked,
         anthropicProxyPort: $('anthropicProxyPort').value,
         anthropicApiKey: $('anthropicApiKey').value
@@ -265,7 +268,7 @@ function applyFields(f) {
     ['serverPath','modelPath','draftModelPath','mmprojPath','alias','port','cudaDevice',
      'gpuLayers','ctxSize','batchSize','ubatchSize','numPhysGpu','cacheRam',
      'threads','threadsBatch','reasoningBudget','draftN','draftNgl',
-     'imageMinTokens','extraParams','anthropicProxyPort','anthropicApiKey'].forEach(function(k) {
+     'imageMinTokens','extraParams','chatTemplateFile','anthropicProxyPort','anthropicApiKey'].forEach(function(k) {
         var e = $(k); if (e && f.hasOwnProperty(k)) e.value = f[k];
     });
 
@@ -273,7 +276,7 @@ function applyFields(f) {
         var e = $(k); if (e && f.hasOwnProperty(k)) e.checked = !!f[k];
     });
 
-    ['cacheK','cacheV','draftTypeK','draftTypeV','specType','logVerbosity','logFormat'].forEach(function(k) {
+    ['cacheK','cacheV','draftTypeK','draftTypeV','specType','logVerbosity','logFormat','reasoningEffort'].forEach(function(k) {
         var e = $(k); if (e && f.hasOwnProperty(k)) e.value = f[k];
     });
 
@@ -317,7 +320,12 @@ function buildCmd() {
     if (f.cacheRam) L.push('--cache-ram', f.cacheRam);
     if (f.threads) L.push('-t', f.threads);
     if (f.threadsBatch) L.push('-tb', f.threadsBatch);
-    if (f.jinja) L.push('--jinja');
+    if (f.chatTemplateFile) {
+        L.push('--jinja');
+        L.push('--chat-template-file', f.chatTemplateFile);
+    } else if (f.jinja) {
+        L.push('--jinja');
+    }
     if (f.flashAttn) L.push('--flash-attn', 'on');
     if (f.reasoningPreserve) L.push('--reasoning-preserve');
     L.push(f.kvUnified ? '--kv-unified' : '--no-kv-unified');

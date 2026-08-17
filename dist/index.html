@@ -173,6 +173,23 @@
       <div class="col" style="width:114px"><label>图片minTok</label><input type="number" id="imageMinTokens"></div>
     </div>
     <div class="fr" style="margin-top:9px">
+      <div class="col" style="flex:1"><label title="指定自定义 Jinja 聊天模板文件 (--chat-template-file)，支持 Qwen 3.8 三级思考控深模板">Jinja 聊天模板文件 (--chat-template-file)</label>
+        <div style="display:flex;gap:6px">
+          <input type="text" id="chatTemplateFile" placeholder="可选，如 C:\AI\models\chat_template.jinja" style="min-width:0">
+          <button class="btn-file" onclick="browseFile('chatTemplateFile','jinja')" style="white-space:nowrap;padding:0 8px">📁 浏览</button>
+        </div>
+      </div>
+      <div class="col" style="width:150px"><label title="Qwen 3.8 三级思考档位 (Prompt-Steered Reasoning Effort)">思考档位 (Effort)</label>
+        <select id="reasoningEffort" onchange="updatePreview()">
+          <option value="default">默认 (medium)</option>
+          <option value="medium">medium (标准思考)</option>
+          <option value="xhigh">xhigh / high (深度思考)</option>
+          <option value="low">low (简短低级思考)</option>
+          <option value="off">off (关闭思考过程)</option>
+        </select>
+      </div>
+    </div>
+    <div class="fr" style="margin-top:9px">
       <div class="col g"><label>额外参数（每行一个）</label>
         <textarea id="extraParams" rows="2" style="resize:vertical;font-family:Consolas,monospace;font-size:11px;line-height:1.5"></textarea>
       </div>
