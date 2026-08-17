@@ -331,8 +331,21 @@ function buildCmd() {
     L.push(f.kvUnified ? '--kv-unified' : '--no-kv-unified');
     if (f.contBatching) L.push('--cont-batching');
     if (f.metrics) L.push('--metrics');
-    L.push('--reasoning', f.reasoning ? 'on' : 'off');
-    if (f.reasoning && f.reasoningBudget) L.push('--reasoning-budget', f.reasoningBudget);
+    if (f.reasoningEffort === 'off') {
+        L.push('--reasoning', 'off');
+        L.push('--reasoning-budget', '0');
+    } else {
+        L.push('--reasoning', f.reasoning ? 'on' : 'off');
+        if (f.reasoningEffort === 'xhigh') {
+            L.push('--reasoning-budget', f.reasoningBudget || '8192');
+        } else if (f.reasoningEffort === 'low') {
+            L.push('--reasoning-budget', f.reasoningBudget || '1024');
+        } else if (f.reasoningEffort === 'medium') {
+            L.push('--reasoning-budget', f.reasoningBudget || '4096');
+        } else if (f.reasoning && f.reasoningBudget) {
+            L.push('--reasoning-budget', f.reasoningBudget);
+        }
+    }
     if (f.specType !== 'none') {
         L.push('--spec-type', f.specType);
         if (f.draftN) L.push('--spec-draft-n-max', f.draftN);
